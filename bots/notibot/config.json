@@ -1,0 +1,33 @@
+{
+  "channelMappings": [
+    {
+      "sourceChannelId": "1427881650234195988",
+      "targetChannelId": "1512092814941491313",
+      "targetWebhookUrl": ""
+    },
+    {
+      "sourceChannelId": "1428368453760319508",
+      "targetChannelId": "1512092816837181440",
+      "targetWebhookUrl": ""
+    },
+    {
+      "sourceChannelId": "1453016064807010497",
+      "targetChannelId": "1522313809123868813",
+      "targetWebhookUrl": ""
+    },
+    {
+      "sourceChannelId": "1455122248582303949",
+      "targetChannelId": "1522391343534440478",
+      "targetWebhookUrl": ""
+    }
+  ],
+  "ignoreBots": false,
+  "ignoreSelf": true,
+  "targetGuildId": "1523806287492677754",
+  "setupChannelId": "1512105165279199392",
+  "forwardEmbeds": true,
+  "forwardAttachments": true,
+  "preventPings": true,
+  "messageDelay": 1000,
+  "messageTemplate": "{content}"
+}

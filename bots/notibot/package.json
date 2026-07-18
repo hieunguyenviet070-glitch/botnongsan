@@ -1,0 +1,17 @@
+{
+  "name": "@workspace/notibot",
+  "version": "1.0.0",
+  "description": "Discord Selfbot -> Official Bot Forwarder (Play Together Customizer)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^13.17.1",
+    "discord.js-selfbot-v13": "^3.7.1",
+    "dotenv": "^17.4.2",
+    "debug": "^4.3.4"
+  }
+}

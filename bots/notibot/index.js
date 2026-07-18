@@ -1,0 +1,1653 @@
+const setup = require('./setup.js');
+const { Client } = require('discord.js-selfbot-v13');
+const { Client: BotClient, MessageActionRow, MessageButton, MessageSelectMenu } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  gray: '\x1b[90m'
+};
+function logTime() {
+  const now = new Date();
+  return `${colors.gray}[${now.toLocaleTimeString()}]${colors.reset}`;
+}
+const log = {
+  info: (msg) => console.log(`${logTime()} ${colors.cyan}[INFO]${colors.reset} ${msg}`),
+  success: (msg) => console.log(`${logTime()} ${colors.green}[SUCCESS]${colors.reset} ${msg}`),
+  warn: (msg) => console.log(`${logTime()} ${colors.yellow}[WARN]${colors.reset} ${msg}`),
+  error: (msg, err = '') => console.error(`${logTime()} ${colors.red}[ERROR]${colors.reset} ${msg}`, err),
+  forward: () => { }
+};
+function printBanner() {
+  console.log(`\n${colors.magenta}${colors.bright}==============================================${colors.reset}`);
+  console.log(`${colors.cyan}${colors.bright}   DISCORD SELFBOT -> OFFICIAL BOT FORWARDER${colors.reset}`);
+  console.log(`${colors.yellow}             Play Together Customizer${colors.reset}`);
+  console.log(`${colors.magenta}${colors.bright}==============================================${colors.reset}\n`);
+}
+printBanner();
+if (!fs.existsSync(CONFIG_PATH)) {
+  log.error('Không tìm thấy file config.json! Vui lòng tạo file config.json trước.');
+  process.exit(1);
+}
+let config;
+try {
+  config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  if (config.channelMappings && Array.isArray(config.channelMappings)) {
+    config.channelMappings = config.channelMappings.map(mapping => ({
+      sourceChannelId: (mapping.sourceChannelId || '').trim(),
+      targetChannelId: (mapping.targetChannelId || '').trim()
+    })).filter(m => m.sourceChannelId !== '' && m.targetChannelId !== '');
+  } else {
+    config.channelMappings = [];
+  }
+} catch (error) {
+  log.error('File config.json bị lỗi cấu hình hoặc lỗi cú pháp JSON!', error);
+  process.exit(1);
+}
+const EMOJIS_PATH = path.join(__dirname, 'emojis.json');
+let emojiConfig = { emojis: {}, roles: {} };
+try {
+  if (fs.existsSync(EMOJIS_PATH)) {
+    emojiConfig = JSON.parse(fs.readFileSync(EMOJIS_PATH, 'utf8'));
+  }
+} catch (error) {
+  log.warn('Lỗi đọc file emojis.json, sẽ sử dụng cấu hình mặc định.', error.message);
+}
+const discordToken = setup.DISCORD_TOKEN;
+const botToken = setup.BOT_TOKEN;
+if (!discordToken || discordToken === 'YOUR_DISCORD_TOKEN_HERE') {
+  log.error('Vui lòng cấu hình Token Discord (Selfbot) trong file setup.js!');
+  process.exit(1);
+}
+if (!botToken || botToken === 'YOUR_BOT_TOKEN_HERE') {
+  log.error('Vui lòng cấu hình Token Bot Discord chính thức trong file setup.js!');
+  process.exit(1);
+}
+if (config.channelMappings.length === 0) {
+  log.error('Không tìm thấy cấu hình liên kết kênh (channelMappings) hợp lệ trong config.json!');
+  process.exit(1);
+}
+const client = new Client({
+  checkUpdate: false,
+});
+const botClient = new BotClient({
+  intents: ['GUILDS', 'GUILD_MESSAGES']
+});
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const lastSentMessages = new Map();
+function extractComponentText(components) {
+  if (!components || !Array.isArray(components)) return '';
+  let text = '';
+  for (const comp of components) {
+    if (comp.content) {
+      text += (text ? '\n' : '') + comp.content;
+    }
+    if (comp.data && comp.data.content) {
+      text += (text ? '\n' : '') + comp.data.content;
+    }
+    if (comp.components && Array.isArray(comp.components)) {
+      const subText = extractComponentText(comp.components);
+      if (subText) {
+        text += (text ? '\n' : '') + subText;
+      }
+    }
+  }
+  return text;
+}
+const emojiFallbacks = {
+  'iconweathernormalday': '☀️',
+  'iconweathernormalnight': '🌙',
+  'iconweatherrainyday': '🌧️',
+  'iconweatherrainynight': '🌧️',
+  'iconweathermeteornight': '🌠',
+  'iconweathersnowyday': '❄️',
+  'iconweathersnowynight': '❄️',
+  'iconweathernormalsunrise': '🌅',
+  'iconweathernormalsunset': '🌇',
+  'iconweatherthunderstormday': '⛈️',
+  'iconweatherthunderstormnight': '⛈️',
+  'iconweathereclipse': '🌑',
+  'iconweatherwindy': '💨',
+  'iconweatherfoggy': '🌫️',
+  'coin': '🪙',
+  'money': '🪙',
+  'xu': '🪙',
+  'gem': '💎',
+  'kimcuong': '💎',
+  'iconfarmcoin': '🪙',
+  'icongem': '💎',
+  'apple': '🍎',
+  'tao': '🍎',
+  'mangcau': '🍈',
+  'duahau': '🍉',
+  'watermelon': '🍉',
+  'xoai': '🥭',
+  'mango': '🥭',
+  'dautay': '🍓',
+  'strawberry': '🍓',
+  'anhdao': '🍒',
+  'cherry': '🍒',
+  'nho': '🍇',
+  'grape': '🍇',
+  'cachua': '🍅',
+  'tomato': '🍅',
+  'ot': '🌶️',
+  'chili': '🌶️',
+  'ngo': '🌽',
+  'corn': '🌽',
+  'bap': '🌽',
+  'xuongrong': '🌵',
+  'cactus': '🌵',
+  'hoaloaken': '🪻',
+  'lily': '🪻',
+  'camtucau': '🌸',
+  'hydrangea': '🌸',
+  'khe': '🌟',
+  'starfruit': '🌟',
+  'carambola': '🌟',
+  'dudu': '🥭',
+  'papaya': '🥭',
+  'sunflower': '🌻',
+  'rose': '🌹',
+  'tulip': '🌷',
+  'carrot': '🥕',
+  'potato': '🥔',
+  'pumpkin': '🎃',
+  'cucumber': '🥒',
+  'cabbage': '🥬',
+  'voitoc': '🚰',
+  'voitau': '🚰',
+  'voitot': '🚰',
+  'voitro': '🚰',
+  'sprinkler': '🚰',
+  'wateringcan': '🚰',
+  'fertilizer': '🪱',
+  'npcfurniture': '🛋️',
+  'tool': '👩‍🔧',
+  'furniture': '🛋️',
+  'scarecrowbox': '📦',
+  'trashcanbox': '📦',
+  'picnicbox': '📦',
+  'adventurerguildchest': '📦',
+  'woodchest': '📦',
+  'steelchest': '📦',
+  'goldchest': '📦',
+  'mysteriousbox': '📦',
+  'boxiconouthousepicnic': '🧺',
+  'boxiconouthouseexplorer': '📦',
+  'boxiconouthousescarecrow': '📦',
+  'boxiconouthousetrashcan': '🗑️',
+  'hop': '📦',
+  'ruong': '📦',
+  'box': '📦',
+  'chest': '📦'
+};
+function getFallbackEmoji(name) {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (emojiFallbacks[normalized]) {
+    return emojiFallbacks[normalized];
+  }
+  for (const [key, val] of Object.entries(emojiFallbacks)) {
+    if (normalized.includes(key) || key.includes(normalized)) {
+      return val;
+    }
+  }
+  if (normalized.includes('weather')) return '🌦️';
+  if (normalized.includes('seed') || normalized.includes('hat')) return '🌱';
+  if (normalized.includes('shop') || normalized.includes('cua_hang')) return '🏪';
+  return null;
+}
+function mapCustomEmojis(text, sourceMessage) {
+  if (typeof text !== 'string') return text;
+  const sourceGuildId = sourceMessage && sourceMessage.guild ? sourceMessage.guild.id : null;
+  return text.replace(/<(a?):([a-zA-Z0-9_~]+):([0-9]+)>/g, (match, animated, name, id) => {
+    if (emojiConfig.emojis && emojiConfig.emojis[name]) {
+      const configuredEmoji = emojiConfig.emojis[name];
+      if (configuredEmoji && !configuredEmoji.includes('ĐIỀN_ID_EMOJI_CỦA_BẠN_VÀO_ĐÂY')) {
+        return configuredEmoji;
+      }
+    }
+    const targetEmoji = botClient.emojis.cache.find(e => e.name === name && e.guild.id !== sourceGuildId);
+    if (targetEmoji) {
+      return `<${targetEmoji.animated ? 'a' : ''}:${targetEmoji.name}:${targetEmoji.id}>`;
+    }
+    const fallback = getFallbackEmoji(name);
+    if (fallback) {
+      return fallback;
+    }
+    return match;
+  });
+}
+function getEndTimeStr(startTimeStr) {
+  const [hh, mm] = startTimeStr.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return startTimeStr;
+  let endMm = mm + 5;
+  let endHh = hh;
+  if (endMm >= 60) {
+    endMm -= 60;
+    endHh = (endHh + 1) % 24;
+  }
+  return `${endHh.toString().padStart(2, '0')}:${endMm.toString().padStart(2, '0')}`;
+}
+function formatToVietnameseTime(timeStr) {
+  const [hh, mm] = timeStr.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return timeStr;
+  return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
+}
+function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
+  if (defaultRoleName !== 'Thời Tiết') return null;
+  const titleText = originalEmbed.title || '';
+  const descText = originalEmbed.description || '';
+  const combined = `${titleText}\n${descText}`;
+  const lowerText = combined.toLowerCase();
+  const rules = [
+    {
+      keys: ['cực quang', 'eclipse'],
+      emojiKey: 'icon_weather_Eclipse',
+      fallbackEmoji: '<:cucquang:1523873288969785394>',
+      weatherName: 'Cực Quang',
+      variantName: 'Cực Quang'
+    },
+    {
+      keys: ['ánh trăng', 'moonlight'],
+      emojiKey: 'anhtrang',
+      fallbackEmoji: '<:anhtrang:1523873368829595710>',
+      weatherName: 'Ánh Trăng',
+      variantName: 'Ánh Trăng'
+    },
+    {
+      keys: ['mưa', 'rainy', 'rain', 'ẩm ướt'],
+      emojiKey: 'icon_weather_Rainy_Day',
+      fallbackEmoji: '<:mua:1523873439968919652>',
+      weatherName: 'Mưa',
+      variantName: 'Ẩm Ướt'
+    },
+    {
+      keys: ['bão', 'thunderstorm', 'nhiễm điện'],
+      emojiKey: 'icon_weather_ThunderStorm_Day',
+      fallbackEmoji: '<:bao:1523873558143565886>',
+      weatherName: 'Bão',
+      variantName: 'Nhiễm Điện'
+    },
+    {
+      keys: ['gió cát', 'sandstorm', 'cát'],
+      emojiKey: 'sandstorm',
+      fallbackEmoji: '<:giocat:1523873722182664304>',
+      weatherName: 'Gió Cát',
+      variantName: 'Cát'
+    },
+    {
+      keys: ['gió xuân', 'spring wind', 'spring breeze', 'bướm'],
+      emojiKey: 'spring_wind',
+      fallbackEmoji: '<:gioxuan:1523874877088469163>',
+      weatherName: 'Gió Xuân',
+      variantName: 'Bướm'
+    },
+    {
+      keys: ['gió', 'windy', 'wind'],
+      emojiKey: 'icon_weather_Windy',
+      fallbackEmoji: '<:gio:1523873647842955414>',
+      weatherName: 'Gió',
+      variantName: 'Gió'
+    },
+    {
+      keys: ['sương mù', 'foggy', 'fog'],
+      emojiKey: 'icon_weather_Foggy',
+      fallbackEmoji: '<:suongmu:1523873790008889414>',
+      weatherName: 'Sương Mù',
+      variantName: 'Ẩm Ướt'
+    },
+    {
+      keys: ['sương sớm', 'mist', 'dew', 'sương'],
+      emojiKey: 'mist',
+      fallbackEmoji: '<:suongsom:1523874606878953623>',
+      weatherName: 'Sương Sớm',
+      variantName: 'Sương'
+    },
+    {
+      keys: ['nắng nóng', 'heatwave', 'khô'],
+      emojiKey: 'heatwave',
+      fallbackEmoji: '<:nangnong:1523874825720827904>',
+      weatherName: 'Nắng Nóng',
+      variantName: 'Khô'
+    },
+    {
+      keys: ['sóng điện từ', 'electromagnetic', 'digital', 'tê điện'],
+      emojiKey: 'electromagnetic',
+      fallbackEmoji: '<:songdientu:1523874917890789497>',
+      weatherName: 'Sóng Điện Từ',
+      variantName: 'Tê Điện'
+    }
+  ];
+
+  let matchedRule = null;
+  for (const rule of rules) {
+    let matched = false;
+    for (const key of rule.keys) {
+      if (lowerText.includes(key)) {
+        matched = true;
+        break;
+      }
+    }
+    if (matched) {
+      matchedRule = rule;
+      break;
+    }
+  }
+
+  if (targetChannelId === '1512092816837181440') {
+    const timeRegex = /(\d{1,2}:\d{2})/g;
+    const timeMatches = combined.match(timeRegex);
+    const startTime = timeMatches ? timeMatches[0] : null;
+    
+    let embedTitle = '';
+    let embedDesc = '';
+    
+    if (matchedRule) {
+      let emoji = matchedRule.fallbackEmoji;
+      if (emojiConfig.emojis && emojiConfig.emojis[matchedRule.emojiKey]) {
+        const val = emojiConfig.emojis[matchedRule.emojiKey];
+        if (val && !val.includes('ĐIỀN_ID_EMOJI')) {
+          emoji = val;
+        }
+      }
+      embedTitle = `${emoji} ${matchedRule.weatherName} đang xuất hiện`;
+      embedDesc = `Nông sản biến thể: ${matchedRule.variantName}`;
+      if (startTime) {
+        embedDesc += `\n\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
+      }
+    } else {
+      let cleanTitle = titleText || combined.split('\n')[0] || 'Thông báo thời tiết';
+      cleanTitle = cleanTitle.replace(/\[\d{1,2}:\d{2}\]|\b\d{1,2}:\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+      embedTitle = cleanTitle;
+      if (startTime) {
+        embedDesc = `-# Thời gian: ${startTime}`;
+      } else {
+        embedDesc = '_Không có chi tiết thời gian_';
+      }
+    }
+    
+    return {
+      title: embedTitle,
+      description: embedDesc,
+      color: originalEmbed.color || 0x3498db
+    };
+  }
+
+  if (matchedRule) {
+    let emoji = matchedRule.fallbackEmoji;
+    if (emojiConfig.emojis && emojiConfig.emojis[matchedRule.emojiKey]) {
+      const val = emojiConfig.emojis[matchedRule.emojiKey];
+      if (val && !val.includes('ĐIỀN_ID_EMOJI')) {
+        emoji = val;
+      }
+    }
+    let description = `${emoji} ${matchedRule.weatherName} đang xuất hiện\nNông sản biến thể: ${matchedRule.variantName}`;
+    const timeMatch = combined.match(/(Thời gian|Time):\s*([^\n]+)/i);
+    if (timeMatch) {
+      description += `\n${timeMatch[0]}`;
+    }
+    return {
+      description: description,
+      color: originalEmbed.color || 0x3498db
+    };
+  }
+  return null;
+}
+function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannelId) {
+  if (!rawText) return null;
+  const cleanRawText = rawText.replace(/<@&?\d+>|<#\d+>/g, '').trim();
+  const match = cleanRawText.match(/\[(\d{1,2}:\d{2})\]\s*(.*)$/s);
+  if (!match) return null;
+  const startTimeStr = match[1];
+  const itemsPart = match[2].trim();
+  const rawItems = itemsPart.split(/\s*-\s*/);
+  const formattedItems = [];
+  for (const item of rawItems) {
+    const trimmedItem = item.trim();
+    if (!trimmedItem) continue;
+    const cleanItem = trimmedItem
+      .replace(/<a?:[a-zA-Z0-9_~]+:[0-9]+>\s*/g, '')
+      .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+      .replace(/^[#>\s-]+|[#>\s-]+$/g, '')
+      .trim();
+    if (!cleanItem) continue;
+    const qtyMatch = cleanItem.match(/^(.*?)\s*x\s*(\d+)$/);
+    if (qtyMatch) {
+      const name = qtyMatch[1].trim();
+      const qty = qtyMatch[2].trim();
+      const itemWithEmoji = insertItemEmojis(name);
+      const emojiMatch = itemWithEmoji.match(/^(\S+)\s+(.*)$/);
+      if (emojiMatch) {
+        const emoji = emojiMatch[1];
+        const nameOnly = emojiMatch[2];
+        formattedItems.push(`${emoji} **${nameOnly}** x${qty}`);
+      } else {
+        formattedItems.push(`**${itemWithEmoji}** x${qty}`);
+      }
+    } else {
+      const itemWithEmoji = insertItemEmojis(cleanItem);
+      const emojiMatch = itemWithEmoji.match(/^(\S+)\s+(.*)$/);
+      if (emojiMatch) {
+        const emoji = emojiMatch[1];
+        const nameOnly = emojiMatch[2];
+        formattedItems.push(`${emoji} **${nameOnly}**`);
+      } else {
+        formattedItems.push(`**${itemWithEmoji}**`);
+      }
+    }
+  }
+  if (formattedItems.length === 0) return null;
+  const endTimeStr = getEndTimeStr(startTimeStr);
+  const startTimeFormatted = formatToVietnameseTime(startTimeStr);
+  const endTimeFormatted = formatToVietnameseTime(endTimeStr);
+  let npcEmoji = '🏪';
+  let authorName = 'Thông báo cửa hàng';
+  let embedColor = 0x2b2d31;
+  if (category === 'Hạt Giống') {
+    npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_seedshop']) ? emojiConfig.emojis['npc_seedshop'] : '<:hatgiong:1523885555170017312>';
+    authorName = 'Cửa hàng hạt giống đang bán';
+    embedColor = 0x2ecc71;
+  } else if (category === 'Nông Cụ') {
+    npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_toolshop']) ? emojiConfig.emojis['npc_toolshop'] : '<:congcu:1523885700737400892>';
+    authorName = 'Cửa hàng nông cụ đang bán';
+    embedColor = 0x3498db;
+  }
+  let authorIconUrl = null;
+  const emojiIdMatch = npcEmoji.match(/:([0-9]+)>$/);
+  if (emojiIdMatch) {
+    authorIconUrl = `https://cdn.discordapp.com/emojis/${emojiIdMatch[1]}.png`;
+  }
+  if (targetChannelId === '1512092814941491313' && category === 'Hạt Giống') {
+    const description = formattedItems.join('\n') + `\n\nThời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+    return {
+      title: `${npcEmoji} ${authorName}`,
+      description: description,
+      color: embedColor
+    };
+  }
+  if (targetChannelId === '1522313809123868813' && category === 'Nông Cụ') {
+    const description = formattedItems.join('\n') + `\n\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+    return {
+      title: `${npcEmoji} ${authorName}`,
+      description: description,
+      color: embedColor
+    };
+  }
+  const description = formattedItems.join('\n') + `\n\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+  return {
+    author: {
+      name: authorName,
+      icon_url: authorIconUrl || undefined
+    },
+    description: description,
+    color: embedColor
+  };
+}
+function insertItemEmojis(text) {
+  if (typeof text !== 'string') return text;
+  let result = text;
+  const defs = Object.values(roleDefinitions)
+    .filter(d => d.key && !d.key.startsWith('main_') && d.name)
+    .sort((a, b) => b.name.length - a.name.length);
+  for (const def of defs) {
+    const name = def.name;
+    const key = def.key;
+    let emoji = '';
+    if (emojiConfig.emojis && emojiConfig.emojis[key]) {
+      const val = emojiConfig.emojis[key];
+      if (val && !val.includes('ĐIỀN_ID_EMOJI_CỦA_BẠN_VÀO_ĐÂY')) {
+        emoji = val;
+      }
+    }
+    if (!emoji) {
+      emoji = getFallbackEmoji(key) || '';
+    }
+    if (emoji) {
+      const escapedName = name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(`((?:<a?:[a-zA-Z0-9_~]+:[0-9]+>|[\\u2700-\\u27BF]|[\\uE000-\\uF8FF]|\\uD83C[\\uDC00-\\uDFFF]|\\uD83D[\\uDC00-\\uDFFF]|[\\u2011-\\u26FF]|\\uD83E[\\uDD00-\\uDFFF])\\s*)?(${escapedName})`, 'g');
+      result = result.replace(regex, (match, prefix, matchedName) => {
+        if (prefix) {
+          return match;
+        }
+        return `${emoji} ${matchedName}`;
+      });
+    }
+  }
+  return result;
+}
+async function getTargetGuild(mapping, sourceGuildId) {
+  if (config.targetGuildId) {
+    const guild = botClient.guilds.cache.get(config.targetGuildId);
+    if (guild) return guild;
+  }
+  if (mapping.targetChannelId) {
+    try {
+      const chan = await botClient.channels.fetch(mapping.targetChannelId);
+      if (chan && chan.guild) return chan.guild;
+    } catch (e) { }
+  }
+  return botClient.guilds.cache.first();
+}
+function deduplicateLines(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const seenLines = new Set();
+  const resultLines = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      resultLines.push('');
+      continue;
+    }
+    const normalized = trimmed
+      .toLowerCase()
+      .replace(/<a?:[a-zA-Z0-9_~]+:[0-9]+>/g, '')
+      .replace(/:[a-zA-Z0-9_~]+:/g, '')
+      .replace(/[\s\p{P}]/gu, '');
+    const finalKey = normalized || trimmed;
+    let isDuplicate = false;
+    for (const seen of seenLines) {
+      if (seen === finalKey || seen.includes(finalKey) || finalKey.includes(seen)) {
+        isDuplicate = true;
+        break;
+      }
+    }
+    if (!isDuplicate) {
+      seenLines.add(finalKey);
+      resultLines.push(trimmed);
+    }
+  }
+  return resultLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function formatEmbedTitle(title, sourceMessage) {
+  if (!title) return null;
+  let cleaned = title
+    .replace(/^[#\s>*_-]+/g, '')
+    .replace(/[*_]+$/g, '')
+    .trim();
+  const lower = cleaned.toLowerCase();
+  if ((lower.includes('cửa hàng nông cụ') || lower.includes('nông cụ')) && (lower.includes('làm mới') || lower.includes('đã được làm mới'))) {
+    return '<:Toolshop:1523883603484872905> Cửa hàng nông cụ đã được làm mới';
+  }
+  if (lower.includes('đơn hàng') && (lower.includes('làm mới') || lower.includes('đã được làm mới'))) {
+    return '<:Order:1523883533326749786> Đơn hàng đã được làm mới';
+  }
+  if ((lower.includes('cửa hàng nội thất') || lower.includes('nội thất')) && (lower.includes('làm mới') || lower.includes('đã được làm mới'))) {
+    return '<:emoji_114:1523977828830412810> Cửa hàng nội thất đã được làm mới';
+  }
+  return insertItemEmojis(mapCustomEmojis(cleaned, sourceMessage));
+}
+function formatFallbackDescription(text) {
+  if (!text) return text;
+  return text.replace(/\b(\d{1,2}:\d{2}(?:\s*(?:AM|PM|CH|SA))?)\b/gi, '`$1`');
+}
+function getAllMessageText(message) {
+  let texts = [];
+  if (message.content) {
+    texts.push(message.content);
+  }
+  if (message.components && message.components.length > 0) {
+    texts.push(extractComponentText(message.components));
+  }
+  if (message.embeds && message.embeds.length > 0) {
+    for (const embed of message.embeds) {
+      if (embed.title) texts.push(embed.title);
+      if (embed.description) texts.push(embed.description);
+      if (embed.author && embed.author.name) texts.push(embed.author.name);
+      if (embed.footer && embed.footer.text) texts.push(embed.footer.text);
+      if (embed.fields && embed.fields.length > 0) {
+        for (const field of embed.fields) {
+          if (field.name) texts.push(field.name);
+          if (field.value) texts.push(field.value);
+        }
+      }
+    }
+  }
+  return texts.join('\n');
+}
+async function formatPlayTogetherNotification(message, targetGuild) {
+  const rawContent = getAllMessageText(message);
+  const lowerContent = rawContent.toLowerCase();
+  if (lowerContent.includes('đã xóa một tin nhắn') || lowerContent.includes('đã chỉnh sửa') || lowerContent.includes('chi đã xóa một tin nhắn')) {
+    return {
+      content: rawContent,
+      embeds: []
+    };
+  }
+  let defaultRoleName = null;
+  const channelId = message.channel.id;
+  if (channelId === '1427881650234195988' || lowerContent.includes('hạt giống') || lowerContent.includes('seedshop')) {
+    defaultRoleName = 'Hạt Giống';
+  } else if (channelId === '1428368453760319508' || lowerContent.includes('thời tiết') || lowerContent.includes('weather')) {
+    defaultRoleName = 'Thời Tiết';
+  } else if (channelId === '1453016064807010497' || lowerContent.includes('nông cụ') || lowerContent.includes('toolshop')) {
+    defaultRoleName = 'Nông Cụ';
+  } else if (channelId === '1489537078822834376' || lowerContent.includes('làm mới') || lowerContent.includes('refresh') || lowerContent.includes('đơn hàng') || lowerContent.includes('order')) {
+    defaultRoleName = 'Thời Gian Làm Mới';
+  }
+  const rolesToPing = [];
+  if (targetGuild) {
+    try { await targetGuild.roles.fetch(); } catch (e) { }
+    const pingedRoleIds = new Set();
+    const addRoleToPing = (roleIdOrName) => {
+      if (!roleIdOrName) return;
+      if (/^\d+$/.test(roleIdOrName)) {
+        if (!pingedRoleIds.has(roleIdOrName)) {
+          pingedRoleIds.add(roleIdOrName);
+          rolesToPing.push(`<@&${roleIdOrName}>`);
+        }
+      } else {
+        let nameToSearch = roleIdOrName.toLowerCase();
+        let targetRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === nameToSearch);
+        if (targetRole) {
+          if (!pingedRoleIds.has(targetRole.id)) {
+            pingedRoleIds.add(targetRole.id);
+            rolesToPing.push(`<@&${targetRole.id}>`);
+          }
+        } else {
+          log.warn(`Không thể tìm thấy vai trò "${roleIdOrName}" (hoặc các tên gọi thay thế) trên máy chủ "${targetGuild.name}".`);
+        }
+      }
+    };
+    if (message.mentions && message.mentions.roles && message.mentions.roles.size > 0) {
+      message.mentions.roles.forEach(role => {
+        const roleNameLower = role.name.toLowerCase();
+        let matchedRoleId = null;
+        if (emojiConfig.roles) {
+          const matchedKey = Object.keys(emojiConfig.roles).find(k => k.toLowerCase() === roleNameLower);
+          if (matchedKey) {
+            const val = emojiConfig.roles[matchedKey];
+            if (val && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+              matchedRoleId = val;
+            }
+          }
+        }
+        if (matchedRoleId) {
+          addRoleToPing(matchedRoleId);
+        } else {
+          addRoleToPing(role.name);
+        }
+      });
+    }
+    if (defaultRoleName === 'Hạt Giống') {
+      const plantNameMap = {
+        'anh đào': 'cherry',
+        'cherry': 'cherry',
+        'xương rồng': 'cactus',
+        'cactus': 'cactus',
+        'đu đủ': 'papaya',
+        'papaya': 'papaya',
+        'dudu': 'papaya',
+        'dưa hấu': 'watermelon',
+        'watermelon': 'watermelon',
+        'duahau': 'watermelon',
+        'xoài': 'mango',
+        'mango': 'mango',
+        'xoai': 'mango',
+        'nho': 'grape',
+        'grape': 'grape',
+        'hoa loa kèn': 'lily',
+        'lily': 'lily',
+        'hoaloaken': 'lily',
+        'cẩm tú cầu': 'hydrangea',
+        'hydrangea': 'hydrangea',
+        'camtucau': 'hydrangea',
+        'khế': 'starfruit',
+        'starfruit': 'starfruit',
+        'carambola': 'starfruit',
+        'khe': 'starfruit',
+        'mãng cầu': 'mangcau',
+        'mangcau': 'mangcau',
+        'táo': 'apple',
+        'apple': 'apple',
+        'tao': 'apple',
+        'bí ngô': 'pumpkin',
+        'pumpkin': 'pumpkin',
+        'bingo': 'pumpkin',
+        'dừa': 'coconut',
+        'coconut': 'coconut',
+        'dua': 'coconut',
+        'đậu': 'bean',
+        'bean': 'bean',
+        'dau': 'bean',
+        'táo đường': 'custard_apple',
+        'custard_apple': 'custard_apple',
+        'tao duong': 'custard_apple',
+        'hoa hồng': 'rose',
+        'rose': 'rose',
+        'hoa hong': 'rose'
+      };
+      for (const [plantName, cropKey] of Object.entries(plantNameMap)) {
+        if (lowerContent.includes(plantName)) {
+          let cropRoleId = null;
+          if (emojiConfig.roles && emojiConfig.roles[cropKey]) {
+            const val = emojiConfig.roles[cropKey];
+            if (val && !val.includes('ĐIỀN_ID_ROLE_') && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+              cropRoleId = val;
+            }
+          }
+          if (cropRoleId) {
+            addRoleToPing(cropRoleId);
+          } else {
+            const def = roleDefinitions[cropKey];
+            if (def && def.name) {
+              addRoleToPing(def.name);
+            }
+          }
+        }
+      }
+    }
+    if (defaultRoleName === 'Thời Gian Làm Mới') {
+      const refreshNameMap = {
+        'đơn hàng': 'refresh_order',
+        'order': 'refresh_order',
+        'nội thất': 'refresh_furniture',
+        'furniture': 'refresh_furniture',
+        'nông cụ': 'refresh_toolshop',
+        'toolshop': 'refresh_toolshop'
+      };
+      for (const [refName, refKey] of Object.entries(refreshNameMap)) {
+        if (lowerContent.includes(refName)) {
+          let refRoleId = null;
+          if (emojiConfig.roles && emojiConfig.roles[refKey]) {
+            const val = emojiConfig.roles[refKey];
+            if (val && !val.includes('ĐIỀN_ID_ROLE_') && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+              refRoleId = val;
+            }
+          }
+          if (refRoleId) {
+            addRoleToPing(refRoleId);
+          } else {
+            const def = roleDefinitions[refKey];
+            if (def && def.name) {
+              addRoleToPing(def.name);
+            }
+          }
+        }
+      }
+    }
+    if (defaultRoleName === 'Thời Tiết') {
+      if (message.mentions && message.mentions.roles && message.mentions.roles.size > 0) {
+        const sourceRoleNameToKey = {
+          'moonlight': 'moonlight',
+          'rain': 'rainy',
+          'thunderstorm': 'thunderstorm',
+          'aurora': 'eclipse',
+          'wind': 'windy',
+          'fog': 'foggy',
+          'sandstorm': 'sandstorm',
+          'heatwave': 'heatwave',
+          'dew': 'mist',
+          'spring breeze': 'spring_wind',
+          'digital': 'electromagnetic'
+        };
+        message.mentions.roles.forEach(role => {
+          const nameLower = role.name.toLowerCase();
+          for (const [sName, weaKey] of Object.entries(sourceRoleNameToKey)) {
+            if (nameLower.includes(sName)) {
+              let weaRoleId = null;
+              if (emojiConfig.roles && emojiConfig.roles[weaKey]) {
+                const val = emojiConfig.roles[weaKey];
+                if (val && !val.includes('ĐIỀN_ID_ROLE_') && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+                  weaRoleId = val;
+                }
+              }
+              if (weaRoleId) {
+                addRoleToPing(weaRoleId);
+              } else {
+                const def = roleDefinitions[weaKey];
+                if (def && def.name) {
+                  addRoleToPing(def.name);
+                }
+              }
+            }
+          }
+        });
+      }
+      const weatherNameMap = {
+        'trời sáng': 'normal_day',
+        'sáng': 'normal_day',
+        'normal day': 'normal_day',
+        'ánh trăng': 'moonlight',
+        'moonlight': 'moonlight',
+        'tối': 'normal_night',
+        'trời tối': 'normal_night',
+        'màn đêm': 'normal_night',
+        'trời đêm': 'normal_night',
+        'màn đêm buông xuống': 'normal_night',
+        'normal night': 'normal_night',
+        'mưa': 'rainy',
+        'rain': 'rainy',
+        'rainy': 'rainy',
+        'ẩm ướt': ['rainy', 'foggy'],
+        'bão': 'thunderstorm',
+        'nhiễm điện': 'thunderstorm',
+        'thunderstorm': 'thunderstorm',
+        'cực quang': 'eclipse',
+        'aurora': 'eclipse',
+        'eclipse': 'eclipse',
+        'gió': 'windy',
+        'wind': 'windy',
+        'windy': 'windy',
+        'gió cát': 'sandstorm',
+        'cát': 'sandstorm',
+        'sandstorm': 'sandstorm',
+        'sương mù': 'foggy',
+        'fog': 'foggy',
+        'foggy': 'foggy',
+        'sương sớm': 'mist',
+        'sương': 'mist',
+        'dew': 'mist',
+        'mist': 'mist',
+        'nắng nóng': 'heatwave',
+        'khô': 'heatwave',
+        'heatwave': 'heatwave',
+        'gió xuân': 'spring_wind',
+        'bướm': 'spring_wind',
+        'spring breeze': 'spring_wind',
+        'spring wind': 'spring_wind',
+        'sóng điện từ': 'electromagnetic',
+        'tê điện': 'electromagnetic',
+        'digital': 'electromagnetic',
+        'electromagnetic': 'electromagnetic'
+      };
+      for (const [weaName, weaKeys] of Object.entries(weatherNameMap)) {
+        if (lowerContent.includes(weaName)) {
+          const keys = Array.isArray(weaKeys) ? weaKeys : [weaKeys];
+          for (const weaKey of keys) {
+            let weaRoleId = null;
+            if (emojiConfig.roles && emojiConfig.roles[weaKey]) {
+              const val = emojiConfig.roles[weaKey];
+              if (val && !val.includes('ĐIỀN_ID_ROLE_') && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+                weaRoleId = val;
+              }
+            }
+            if (weaRoleId) {
+              addRoleToPing(weaRoleId);
+            } else {
+              const def = roleDefinitions[weaKey];
+              if (def && def.name) {
+                addRoleToPing(def.name);
+              }
+            }
+          }
+        }
+      }
+    }
+    if (defaultRoleName === 'Nông Cụ') {
+      const toolNameMap = {
+        'vòi tưới thường': 'normal_watering_can',
+        'vòi thường': 'normal_watering_can',
+        'normal watering': 'normal_watering_can',
+        'vòi tưới cao cấp': 'advanced_watering_can',
+        'vòi cao cấp': 'advanced_watering_can',
+        'advanced watering': 'advanced_watering_can',
+        'vòi tưới siêu cao cấp': 'expert_watering_can',
+        'vòi siêu cấp': 'expert_watering_can',
+        'expert watering': 'expert_watering_can'
+      };
+      for (const [toolName, toolKey] of Object.entries(toolNameMap)) {
+        if (lowerContent.includes(toolName)) {
+          let toolRoleId = null;
+          if (emojiConfig.roles && emojiConfig.roles[toolKey]) {
+            const val = emojiConfig.roles[toolKey];
+            if (val && !val.includes('ĐIỀN_ID_ROLE_') && !val.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) {
+              toolRoleId = val;
+            }
+          }
+          if (toolRoleId) {
+            addRoleToPing(toolRoleId);
+          } else {
+            const def = roleDefinitions[toolKey];
+            if (def && def.name) {
+              addRoleToPing(def.name);
+            }
+          }
+        }
+      }
+    }
+  }
+  const botAvatarUrl = botClient.user ? botClient.user.displayAvatarURL() : null;
+  const mapping = config.channelMappings.find(m => m.sourceChannelId === message.channel.id);
+  const targetChannelId = mapping ? mapping.targetChannelId : null;
+  const shopEmbed = formatShopEmbedIfMatches(rawContent, defaultRoleName, botAvatarUrl, targetChannelId);
+  if (shopEmbed) {
+    return {
+      content: rolesToPing.length > 0 ? rolesToPing.join(' ') : null,
+      embeds: [shopEmbed]
+    };
+  }
+  if (message.embeds && message.embeds.length > 0) {
+    const targetEmbeds = message.embeds.map(originalEmbed => {
+      if (defaultRoleName === 'Thời Tiết') {
+        const customWeather = formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId);
+        if (customWeather) {
+          return customWeather;
+        }
+      }
+      const targetEmbed = {
+        title: originalEmbed.title ? formatEmbedTitle(originalEmbed.title, message) : null,
+        description: originalEmbed.description ? formatFallbackDescription(insertItemEmojis(mapCustomEmojis(originalEmbed.description, message))) : null,
+        url: originalEmbed.url || null,
+        color: originalEmbed.color || 0x2b2d31
+      };
+      if (originalEmbed.author) {
+        targetEmbed.author = {
+          name: originalEmbed.author.name ? insertItemEmojis(mapCustomEmojis(originalEmbed.author.name, message)) : null,
+          icon_url: originalEmbed.author.iconURL || originalEmbed.author.icon_url || null,
+          url: originalEmbed.author.url || null
+        };
+      }
+      if (originalEmbed.thumbnail) {
+        targetEmbed.thumbnail = {
+          url: originalEmbed.thumbnail.url || null
+        };
+      }
+      if (originalEmbed.image) {
+        targetEmbed.image = {
+          url: originalEmbed.image.url || null
+        };
+      }
+      if (originalEmbed.footer) {
+        targetEmbed.footer = {
+          text: originalEmbed.footer.text ? insertItemEmojis(mapCustomEmojis(originalEmbed.footer.text, message)) : null,
+          icon_url: originalEmbed.footer.iconURL || originalEmbed.footer.icon_url || null
+        };
+      }
+      if (originalEmbed.fields && originalEmbed.fields.length > 0) {
+        targetEmbed.fields = originalEmbed.fields.map(f => ({
+          name: f.name ? insertItemEmojis(mapCustomEmojis(f.name, message)) : '',
+          value: f.value ? insertItemEmojis(mapCustomEmojis(f.value, message)) : '',
+          inline: !!f.inline
+        }));
+      }
+      for (const key of Object.keys(targetEmbed)) {
+        if (targetEmbed[key] === null) {
+          delete targetEmbed[key];
+        }
+      }
+      return targetEmbed;
+    });
+    return {
+      content: rolesToPing.length > 0 ? rolesToPing.join(' ') : null,
+      embeds: targetEmbeds
+    };
+  }
+  let cleanText = message.content || '';
+  if (!cleanText && message.components && message.components.length > 0) {
+    cleanText = extractComponentText(message.components);
+  }
+  cleanText = deduplicateLines(cleanText);
+  cleanText = mapCustomEmojis(cleanText, message);
+  if (message.mentions && message.mentions.roles) {
+    message.mentions.roles.forEach(role => {
+      const roleMentionRegex = new RegExp(`<@&${role.id}>`, 'g');
+      cleanText = cleanText.replace(roleMentionRegex, '');
+    });
+  }
+  let lines = cleanText.split('\n');
+  lines = lines.filter(line => {
+    const l = line.toLowerCase();
+    if (l.includes('đang bán') || l.includes('làm mới') || l.includes('đã được làm mới') || l.includes('thời gian bán')) {
+      return true;
+    }
+    if (l.includes('http') || l.includes('link') || l.includes('ủng hộ') || l.includes('donat') || l.includes('hỗ trợ')) {
+      return false;
+    }
+    return true;
+  });
+  lines = lines
+    .map(line => line.replace(/^[#>\s*-]+/g, '').trim())
+    .filter(line => {
+      if (!line) return false;
+      const stripped = line.replace(/[#>\s\-\*_|]+/g, '');
+      if (stripped === '') return false;
+      return true;
+    });
+  let title = 'CẬP NHẬT PLAY TOGETHER';
+  let description = '';
+  if (lines.length > 0) {
+    title = formatEmbedTitle(lines[0], message);
+    if (title.length > 100) title = title.substring(0, 97) + '...';
+    if (!title) title = 'Thông Báo Mới';
+    description = lines.slice(1).join('\n').trim();
+    description = formatFallbackDescription(insertItemEmojis(description));
+  }
+  let embedColor = 0x2b2d31;
+  if (lowerContent.includes('làm mới') || lowerContent.includes('refresh') || lowerContent.includes('đã được làm mới')) {
+    embedColor = 0x2b2d31;
+  } else if (lowerContent.includes('thời tiết') || lowerContent.includes('mưa') || lowerContent.includes('bão') || lowerContent.includes('nắng') || lowerContent.includes('tuyết')) {
+    embedColor = 0x3498db;
+  } else if (lowerContent.includes('hạt giống') || lowerContent.includes('trái cây') || lowerContent.includes('nông cụ') || lowerContent.includes('cây')) {
+    embedColor = 0x2ecc71;
+  } else if (lowerContent.includes('nội thất')) {
+    embedColor = 0xe91e63;
+  } else if (lowerContent.includes('thời gian')) {
+    embedColor = 0xf1c40f;
+  }
+  let embed = {
+    title: title,
+    description: description || '_Không có mô tả chi tiết_',
+    color: embedColor
+  };
+  if (defaultRoleName === 'Thời Tiết') {
+    const customWeather = formatWeatherEmbed(embed, defaultRoleName, targetChannelId);
+    if (customWeather) {
+      embed = customWeather;
+    }
+  }
+  return {
+    content: rolesToPing.length > 0 ? rolesToPing.join(' ') : null,
+    embeds: [embed]
+  };
+}
+const roleDefinitions = {
+  'cactus': { name: 'Xương Rồng', key: 'cactus' },
+  'apple': { name: 'Táo', key: 'apple' },
+  'grape': { name: 'Nho', key: 'grape' },
+  'pumpkin': { name: 'Bí Ngô', key: 'pumpkin' },
+  'watermelon': { name: 'Dưa Hấu', key: 'watermelon' },
+  'cherry': { name: 'Anh Đào', key: 'cherry' },
+  'papaya': { name: 'Đu Đủ', key: 'papaya' },
+  'mango': { name: 'Xoài', key: 'mango' },
+  'lily': { name: 'Hoa Loa Kèn', key: 'lily' },
+  'hydrangea': { name: 'Cẩm Tú Cầu', key: 'hydrangea' },
+  'starfruit': { name: 'Khế', key: 'starfruit' },
+  'mangcau': { name: 'Mãng Cầu', key: 'mangcau' },
+  'coconut': { name: 'Dừa', key: 'coconut' },
+  'bean': { name: 'Đậu', key: 'bean' },
+  'custard_apple': { name: 'Táo Đường', key: 'custard_apple' },
+  'rose': { name: 'Hoa Hồng', key: 'rose' },
+  'normal_day': { name: 'Trời Sáng', key: 'normal_day' },
+  'normal_night': { name: 'Trời Tối', key: 'normal_night' },
+  'moonlight': { name: 'Ánh Trăng', key: 'moonlight' },
+  'rainy': { name: 'Mưa', key: 'rainy' },
+  'thunderstorm': { name: 'Bão', key: 'thunderstorm' },
+  'eclipse': { name: 'Cực Quang', key: 'eclipse' },
+  'windy': { name: 'Gió', key: 'windy' },
+  'foggy': { name: 'Sương Mù', key: 'foggy' },
+  'sandstorm': { name: 'Gió Cát', key: 'sandstorm' },
+  'mist': { name: 'Sương Sớm', key: 'mist' },
+  'heatwave': { name: 'Nắng Nóng', key: 'heatwave' },
+  'spring_wind': { name: 'Gió Xuân', key: 'spring_wind' },
+  'electromagnetic': { name: 'Sóng Điện Từ', key: 'electromagnetic' },
+  'normal_watering_can': { name: 'Vòi Tưới Thường', key: 'normal_watering_can' },
+  'advanced_watering_can': { name: 'Vòi Tưới Cao Cấp', key: 'advanced_watering_can' },
+  'expert_watering_can': { name: 'Vòi Tưới Siêu Cao Cấp', key: 'expert_watering_can' },
+  'refresh_order': { name: 'Đơn Hàng', key: 'refresh_order' },
+  'refresh_furniture': { name: 'Cửa Hàng Nội Thất', key: 'refresh_furniture' },
+  'refresh_toolshop': { name: 'Cửa Hàng Nông Cụ', key: 'refresh_toolshop' },
+  'main_seed': { name: 'Hạt Giống', key: 'Hạt Giống' },
+  'main_weather': { name: 'Thời Tiết', key: 'Thời Tiết' },
+  'main_tool': { name: 'Nông Cụ', key: 'Nông Cụ' },
+  'main_refresh': { name: 'Thời Gian Làm Mới', key: 'Thời Gian Làm Mới' }
+};
+const seedOptions = [
+  { label: 'Xương rồng', value: 'cactus', emoji: '<:xuongrong:1523864983631564881>' },
+  { label: 'Táo', value: 'apple', emoji: '<:tao:1523865040560848976>' },
+  { label: 'Nho', value: 'grape', emoji: '<:nho:1523865108483149854>' },
+  { label: 'Bí ngô', value: 'pumpkin', emoji: '<:bingo:1523865163537846404>' },
+  { label: 'Dưa hấu', value: 'watermelon', emoji: '<:duahau:1523865209679249568>' },
+  { label: 'Dừa', value: 'coconut', emoji: '<:dua:1523865265488789635>' },
+  { label: 'Xoài', value: 'mango', emoji: '<:xoai:1523865845153923253>' },
+  { label: 'Đậu', value: 'bean', emoji: '<:dau:1523865951395774564>' },
+  { label: 'Khế', value: 'starfruit', emoji: '<:khe:1523868016532652153>' },
+  { label: 'Táo đường', value: 'custard_apple', emoji: '<:taoduong:1523868066646200411>' },
+  { label: 'Đu đủ', value: 'papaya', emoji: '<:dudu:1523868251116011582>' },
+  { label: 'Mãng cầu', value: 'mangcau', emoji: '<:mangcau:1523868887714631830>' },
+  { label: 'Anh đào', value: 'cherry', emoji: '<:anhdao:1523869008695267328>' },
+  { label: 'Cẩm tú cầu', value: 'hydrangea', emoji: '<:camtucau:1523869059890937886>' },
+  { label: 'Hoa loa kèn', value: 'lily', emoji: '<:hoaloaken:1523869275276841050>' },
+  { label: 'Hoa hồng', value: 'rose', emoji: '<:hoahong:1523869332776554596>' }
+];
+const weatherOptions = [
+  { label: 'Trời Sáng', value: 'normal_day', emoji: '<:emoji_113:1523956231805599764>' },
+  { label: 'Trời Tối', value: 'normal_night', emoji: '<:emoji_112:1523956027026968586>' },
+  { label: 'Ánh Trăng', value: 'moonlight', emoji: '<:anhtrang:1523873368829595710>' },
+  { label: 'Mưa', value: 'rainy', emoji: '<:mua:1523873439968919652>' },
+  { label: 'Bão', value: 'thunderstorm', emoji: '<:bao:1523873558143565886>' },
+  { label: 'Cực Quang', value: 'eclipse', emoji: '<:cucquang:1523873288969785394>' },
+  { label: 'Gió', value: 'windy', emoji: '<:gio:1523873647842955414>' },
+  { label: 'Sương Mù', value: 'foggy', emoji: '🌫️' },
+  { label: 'Gió cát', value: 'sandstorm', emoji: '<:giocat:1523873722182664304>' },
+  { label: 'Sương sớm', value: 'mist', emoji: '<:suongsom:1523874606878953623>' },
+  { label: 'Nắng nóng', value: 'heatwave', emoji: '<:nangnong:1523874825720827904>' },
+  { label: 'Gió xuân', value: 'spring_wind', emoji: '<:gioxuan:1523874877088469163>' },
+  { label: 'Sóng điện từ', value: 'electromagnetic', emoji: '<:songdientu:1523874917890789497>' }
+];
+const toolOptions = [
+  { label: 'Vòi Tưới Thường', value: 'normal_watering_can', emoji: '<:voituoithuong:1523877007178338304>' },
+  { label: 'Vòi Tưới Cao Cấp', value: 'advanced_watering_can', emoji: '<:voituoicaocao:1523877077315620894>' },
+  { label: 'Vòi Tưới Siêu Cao Cấp', value: 'expert_watering_can', emoji: '<:voituoisieucaocap:1523878935144829100>' }
+];
+const refreshOptions = [
+  { label: 'Đơn hàng', value: 'refresh_order', emoji: '<:Order:1523883533326749786>' },
+  { label: 'Cửa hàng nội thất', value: 'refresh_furniture', emoji: '<:emoji_114:1523977828830412810>' },
+  { label: 'Cửa hàng nông cụ', value: 'refresh_toolshop', emoji: '<:Toolshop:1523883603484872905>' }
+];
+const mainOptions = [
+  { label: 'Hạt Giống (Mọi hạt giống)', value: 'main_seed', emoji: '🌱' },
+  { label: 'Thời Tiết (Mọi thời tiết)', value: 'main_weather', emoji: '🌦️' },
+  { label: 'Nông Cụ (Mọi nông cụ)', value: 'main_tool', emoji: '🧰' },
+  { label: 'Thời Gian Làm Mới', value: 'main_refresh', emoji: '🕒' }
+];
+function userHasRole(member, roleKey) {
+  const def = roleDefinitions[roleKey];
+  if (!def) return false;
+  if (!emojiConfig.roles || !emojiConfig.roles[def.key]) return false;
+  const roleId = emojiConfig.roles[def.key];
+  if (!roleId || roleId.includes('ĐIỀN_ID_ROLE_') || roleId.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY')) return false;
+  return member.roles.cache.has(roleId);
+}
+function saveRoleIdToConfig(roleKey, roleId) {
+  try {
+    if (!emojiConfig.roles) {
+      emojiConfig.roles = {};
+    }
+    emojiConfig.roles[roleKey] = roleId;
+    fs.writeFileSync(EMOJIS_PATH, JSON.stringify(emojiConfig, null, 2), 'utf8');
+  } catch (err) {
+    log.error(`Lỗi khi lưu ID role vào emojis.json`, err);
+  }
+}
+async function getOrCreateRole(guild, roleName) {
+  let role = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase());
+  if (!role) {
+    try {
+      role = await guild.roles.create({
+        name: roleName,
+        reason: 'Tự động tạo vai trò thông báo cho setup Play Together'
+      });
+    } catch (e) {
+      log.error(`Không thể tạo role: ${roleName}. Vui lòng kiểm tra quyền MANAGE_ROLES của Bot.`, e);
+    }
+  }
+  return role;
+}
+async function updateMemberRoles(interaction, categoryKeys, selectedValues) {
+  const guild = interaction.guild;
+  const member = interaction.member;
+  if (!guild || !member) {
+    return interaction.reply({ content: 'Lỗi: Không tìm thấy máy chủ hoặc thành viên.', ephemeral: true });
+  }
+  await interaction.deferUpdate();
+  const addedRoles = [];
+  const removedRoles = [];
+  for (const optionValue of categoryKeys) {
+    const def = roleDefinitions[optionValue];
+    if (!def) continue;
+    const isSelected = selectedValues.includes(optionValue);
+    let role = await getOrCreateRole(guild, def.name);
+    if (!role) continue;
+    if (!emojiConfig.roles || emojiConfig.roles[def.key] !== role.id) {
+      saveRoleIdToConfig(def.key, role.id);
+    }
+    if (isSelected) {
+      if (!member.roles.cache.has(role.id)) {
+        try {
+          await member.roles.add(role);
+          addedRoles.push(def.name);
+        } catch (e) {
+          log.error(`Không thể gán role ${def.name} cho user ${member.user.tag}`, e);
+        }
+      }
+    } else {
+      if (member.roles.cache.has(role.id)) {
+        try {
+          await member.roles.remove(role);
+          removedRoles.push(def.name);
+        } catch (e) {
+          log.error(`Không thể thu hồi role ${def.name} của user ${member.user.tag}`, e);
+        }
+      }
+    }
+  }
+  let statusText = `Đã cập nhật tùy chỉnh vai trò của bạn:\n`;
+  if (addedRoles.length > 0) statusText += `✅ **Đã đăng ký:** ${addedRoles.join(', ')}\n`;
+  if (removedRoles.length > 0) statusText += `❌ **Đã hủy đăng ký:** ${removedRoles.join(', ')}`;
+  if (addedRoles.length === 0 && removedRoles.length === 0) statusText += `ℹ️ Không có thay đổi nào.`;
+  try {
+    await interaction.followUp({ content: statusText, ephemeral: true });
+  } catch (e) { }
+}
+function buildSetupComponents(member) {
+  const mapWithDefaults = (options) => {
+    return options.map(opt => ({
+      label: opt.label,
+      value: opt.value,
+      emoji: opt.emoji,
+      default: userHasRole(member, opt.value)
+    }));
+  };
+  return [
+    new MessageActionRow().addComponents(
+      new MessageSelectMenu()
+        .setCustomId('setup_select_seeds')
+        .setPlaceholder('Chọn hạt giống')
+        .setMinValues(0)
+        .setMaxValues(seedOptions.length)
+        .addOptions(mapWithDefaults(seedOptions))
+    ),
+    new MessageActionRow().addComponents(
+      new MessageSelectMenu()
+        .setCustomId('setup_select_weather')
+        .setPlaceholder('Chọn loại thời tiết')
+        .setMinValues(0)
+        .setMaxValues(weatherOptions.length)
+        .addOptions(mapWithDefaults(weatherOptions))
+    ),
+    new MessageActionRow().addComponents(
+      new MessageSelectMenu()
+        .setCustomId('setup_select_tools')
+        .setPlaceholder('Chọn loại nông cụ')
+        .setMinValues(0)
+        .setMaxValues(toolOptions.length)
+        .addOptions(mapWithDefaults(toolOptions))
+    ),
+    new MessageActionRow().addComponents(
+      new MessageSelectMenu()
+        .setCustomId('setup_select_refresh')
+        .setPlaceholder('Chọn thời gian làm mới')
+        .setMinValues(0)
+        .setMaxValues(refreshOptions.length)
+        .addOptions(mapWithDefaults(refreshOptions))
+    ),
+    new MessageActionRow().addComponents(
+      new MessageButton()
+        .setCustomId('setup_refresh')
+        .setLabel('Refresh')
+        .setEmoji('🔄')
+        .setStyle('SECONDARY'),
+      new MessageButton()
+        .setCustomId('setup_all_notifs')
+        .setLabel('Theo dõi tất cả thông báo')
+        .setEmoji('🔔')
+        .setStyle('PRIMARY')
+    )
+  ];
+}
+async function registerSlashCommands(guild) {
+  try {
+    const commandData = [
+      {
+        name: 'setup',
+        description: 'Mở menu cấu hình nhận thông báo Play Together'
+      }
+    ];
+    if (guild.commands) {
+      await guild.commands.set(commandData);
+    } else {
+      await botClient.api.applications(botClient.user.id).guilds(guild.id).commands.put({
+        data: commandData
+      });
+    }
+  } catch (err) {
+    log.error(`Lỗi đăng ký slash command cho server ${guild.name}:`, err.message || err);
+  }
+}
+async function registerCommandsForTargetGuilds() {
+  const processedGuilds = new Set();
+  for (const mapping of config.channelMappings) {
+    if (mapping.targetChannelId) {
+      try {
+        const targetChannel = await botClient.channels.fetch(mapping.targetChannelId);
+        if (targetChannel && targetChannel.guild) {
+          const guild = targetChannel.guild;
+          if (!processedGuilds.has(guild.id)) {
+            processedGuilds.add(guild.id);
+            await registerSlashCommands(guild);
+          }
+        }
+      } catch (err) {
+        log.warn(`Không thể lấy guild cho kênh đích ${mapping.targetChannelId} để đăng ký slash commands: ${err.message}`);
+      }
+    }
+  }
+}
+botClient.on('interactionCreate', async (interaction) => {
+  try {
+    const guild = interaction.guild || (interaction.guildId ? await botClient.guilds.fetch(interaction.guildId).catch(() => null) : null);
+    if (!guild) {
+      return;
+    }
+    const member = interaction.member || (interaction.user ? await guild.members.fetch(interaction.user.id).catch(() => null) : null);
+    if (!member) {
+      return;
+    }
+    if (interaction.isCommand()) {
+      if (interaction.commandName === 'setup') {
+        if (setup.ADMIN_IDS && Array.isArray(setup.ADMIN_IDS)) {
+          const validAdminIds = setup.ADMIN_IDS.filter(id => id && id.trim() !== '' && !id.includes('ĐIỀN_ID_'));
+          if (validAdminIds.length > 0 && !validAdminIds.includes(interaction.user.id)) {
+            return interaction.reply({
+              content: '❌ Bạn không có quyền sử dụng lệnh `/setup` này!',
+              ephemeral: true
+            });
+          }
+        }
+        await interaction.reply({
+          content: '⏳ Đang đồng bộ và khởi tạo các vai trò trên máy chủ, vui lòng đợi một chút...'
+        });
+        let hasChanges = false;
+        if (guild) {
+          for (const def of Object.values(roleDefinitions)) {
+            let roleId = emojiConfig.roles ? emojiConfig.roles[def.key] : null;
+            let role = null;
+            if (roleId) {
+              role = guild.roles.cache.get(roleId);
+            }
+            if (!role) {
+              role = await getOrCreateRole(guild, def.name);
+              if (role) {
+                if (!emojiConfig.roles) emojiConfig.roles = {};
+                emojiConfig.roles[def.key] = role.id;
+                hasChanges = true;
+              }
+            }
+          }
+        }
+        if (hasChanges) {
+          try {
+            fs.writeFileSync(EMOJIS_PATH, JSON.stringify(emojiConfig, null, 2), 'utf8');
+          } catch (err) {
+            log.error(`Lỗi khi lưu ID role vào emojis.json:`, err);
+          }
+        }
+        const embed = {
+          title: 'Tuỳ Chỉnh Thông Báo',
+          description: [
+            '────────────────────────────────────',
+            'Nhấn cài đặt thông báo để chọn loại thông báo bạn muốn nhận.',
+            'Sau khi ấn sẽ hiển thị bản cài đặt, bạn chỉ cần chọn loại hạt, thời tiết, nông cụ mà bạn muốn nhận thông báo khi cửa hàng vừa làm mới.'
+          ].join('\n'),
+          color: 0x2b2d31
+        };
+        const row = new MessageActionRow().addComponents(
+          new MessageButton()
+            .setCustomId('setup_customize')
+            .setLabel('Tùy chỉnh thông báo')
+            .setStyle('SUCCESS'),
+          new MessageButton()
+            .setCustomId('setup_clear_all')
+            .setLabel('Tắt tất cả thông báo')
+            .setStyle('DANGER')
+        );
+        await interaction.editReply({
+          content: null,
+          embeds: [embed],
+          components: [row]
+        });
+      }
+    } else if (interaction.isButton()) {
+      if (interaction.customId === 'setup_customize') {
+        const rows = buildSetupComponents(member);
+        await interaction.reply({
+          components: rows,
+          ephemeral: true
+        });
+      } else if (interaction.customId === 'setup_clear_all') {
+        await interaction.deferUpdate();
+        const rolesToRemove = [];
+        for (const opt of Object.values(roleDefinitions)) {
+          if (emojiConfig.roles && emojiConfig.roles[opt.key]) {
+            const roleId = emojiConfig.roles[opt.key];
+            if (roleId && !roleId.includes('ĐIỀN_ID_ROLE_') && !roleId.includes('ĐIỀN_ID_ROLE_CỦA_BẠN_VÀO_ĐÂY') && member.roles.cache.has(roleId)) {
+              rolesToRemove.push(roleId);
+            }
+          }
+        }
+        if (rolesToRemove.length > 0) {
+          try {
+            await member.roles.remove(rolesToRemove);
+            await interaction.followUp({ content: '✅ Đã gỡ bỏ toàn bộ vai trò nhận thông báo của bạn!', ephemeral: true });
+          } catch (e) {
+            log.error(`Không thể gỡ bỏ vai trò`, e);
+            await interaction.followUp({ content: '❌ Lỗi khi gỡ bỏ vai trò, vui lòng thử lại.', ephemeral: true });
+          }
+        } else {
+          await interaction.followUp({ content: 'ℹ️ Bạn hiện chưa cài đặt vai trò nhận thông báo nào.', ephemeral: true });
+        }
+      } else if (interaction.customId === 'setup_refresh') {
+        await interaction.deferUpdate();
+        const rows = buildSetupComponents(member);
+        await interaction.editReply({
+          content: null,
+          embeds: [],
+          components: rows
+        });
+      } else if (interaction.customId === 'setup_all_notifs') {
+        await interaction.deferUpdate();
+        const mainKeys = ['main_seed', 'main_weather', 'main_tool', 'main_refresh'];
+        const added = [];
+        for (const key of mainKeys) {
+          const def = roleDefinitions[key];
+          const role = await getOrCreateRole(guild, def.name);
+          if (role) {
+            if (!emojiConfig.roles || emojiConfig.roles[def.key] !== role.id) {
+              saveRoleIdToConfig(def.key, role.id);
+            }
+            if (!member.roles.cache.has(role.id)) {
+              await member.roles.add(role);
+              added.push(def.name);
+            }
+          }
+        }
+        if (added.length > 0) {
+          await interaction.followUp({ content: `✅ Đã thêm vai trò theo dõi tất cả kênh chính: **${added.join(', ')}**`, ephemeral: true });
+        } else {
+          await interaction.followUp({ content: `ℹ️ Bạn đã theo dõi tất cả các kênh thông báo chính rồi.`, ephemeral: true });
+        }
+      }
+    } else if (interaction.isSelectMenu()) {
+      const selected = interaction.values;
+      if (interaction.customId === 'setup_select_seeds') {
+        const seedKeys = seedOptions.map(opt => opt.value);
+        await updateMemberRoles(interaction, seedKeys, selected);
+      } else if (interaction.customId === 'setup_select_weather') {
+        const weatherKeys = weatherOptions.map(opt => opt.value);
+        await updateMemberRoles(interaction, weatherKeys, selected);
+      } else if (interaction.customId === 'setup_select_tools') {
+        const toolKeys = toolOptions.map(opt => opt.value);
+        await updateMemberRoles(interaction, toolKeys, selected);
+      } else if (interaction.customId === 'setup_select_refresh') {
+        const refreshKeys = refreshOptions.map(opt => opt.value);
+        await updateMemberRoles(interaction, refreshKeys, selected);
+      }
+    }
+  } catch (err) {
+    log.error('Lỗi khi xử lý tương tác (interaction):', err);
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: `❌ Đã xảy ra lỗi khi xử lý tương tác: ${err.message}`, ephemeral: true });
+      } else {
+        await interaction.followUp({ content: `❌ Đã xảy ra lỗi khi xử lý tương tác: ${err.message}`, ephemeral: true });
+      }
+    } catch (replyErr) {
+      log.error('Không thể phản hồi báo lỗi tương tác:', replyErr);
+    }
+  }
+});
+client.on('ready', async () => {
+  log.success(`[Selfbot] Đã đăng nhập tài khoản đọc: ${colors.bright}${client.user.tag}${colors.reset} (ID: ${client.user.id})`);
+});
+botClient.on('ready', async () => {
+  log.success(`[Bot] Đã đăng nhập tài khoản gửi: ${colors.bright}${botClient.user.tag}${colors.reset} (ID: ${botClient.user.id})`);
+  log.info('Đang kiểm tra quyền truy cập các kênh đích...');
+  for (const mapping of config.channelMappings) {
+    if (mapping.targetChannelId) {
+      try {
+        const targetChannel = await botClient.channels.fetch(mapping.targetChannelId);
+        if (targetChannel) {
+          const targetServer = targetChannel.guild ? targetChannel.guild.name : 'DM';
+          log.info(`[Liên Kết Đích] Kênh: ${colors.green}${targetServer} > #${targetChannel.name}${colors.reset}`);
+        }
+      } catch (err) {
+        log.warn(`Bot không thể truy cập kênh đích ID: ${mapping.targetChannelId}. Lỗi: ${err.message}`);
+      }
+    }
+  }
+  await registerCommandsForTargetGuilds();
+  log.success(`Bot thông báo đã sẵn sàng!`);
+});
+async function forwardMessage(message, mapping) {
+  const serverName = message.guild ? message.guild.name : 'DM';
+  const channelName = message.channel.name || 'DM';
+  if (!mapping.targetChannelId) {
+    log.error(`Không có cấu hình kênh đích cho kênh nguồn ${message.channel.id}`);
+    return;
+  }
+
+  // Compute raw message signature synchronously to prevent race conditions
+  let rawSig = message.content || '';
+  if (!rawSig && message.components) {
+    rawSig = extractComponentText(message.components);
+  }
+  if (message.embeds && message.embeds.length > 0) {
+    rawSig += '\n' + message.embeds.map(e => `${e.title || ''}\n${e.description || ''}`).join('\n');
+  }
+  rawSig = rawSig
+    .replace(/<@&?\d+>|<#\d+>|<a?:[a-zA-Z0-9_~]+:[0-9]+>/g, '')
+    .replace(/[\s\p{P}\d]/gu, '')
+    .toLowerCase()
+    .trim();
+
+  const cacheKey = mapping.targetChannelId;
+  const now = Date.now();
+  const previous = lastSentMessages.get(cacheKey);
+  if (previous && previous.signature === rawSig && (now - previous.timestamp) < 15000) {
+    log.info(`Bỏ qua tin nhắn trùng lặp gửi tới kênh ${cacheKey} trong vòng 15 giây.`);
+    return;
+  }
+  lastSentMessages.set(cacheKey, { signature: rawSig, timestamp: now });
+
+  let targetChannel;
+  try {
+    targetChannel = await botClient.channels.fetch(mapping.targetChannelId);
+  } catch (err) {
+    log.error(`Bot không tìm thấy hoặc không có quyền gửi vào kênh đích ID: ${mapping.targetChannelId}`, err.message);
+    return;
+  }
+  const sourceGuildId = message.guild ? message.guild.id : null;
+  const targetGuild = await getTargetGuild(mapping, sourceGuildId);
+  const payload = await formatPlayTogetherNotification(message, targetGuild);
+
+  if (mapping.targetChannelId === '1522391343534440478' && payload && payload.embeds) {
+    payload.embeds = payload.embeds.map(emb => {
+      if (emb.title) {
+        const titleText = emb.title;
+        const currentDesc = emb.description || '';
+        const newDesc = `### ${titleText}\n${currentDesc}`;
+        const newEmb = { ...emb, description: newDesc };
+        delete newEmb.title;
+        return newEmb;
+      }
+      return emb;
+    });
+  }
+
+  const files = [];
+  if (config.forwardAttachments && message.attachments && message.attachments.size > 0) {
+    message.attachments.forEach(attachment => {
+      files.push(attachment.url);
+    });
+  }
+  if (files.length > 0) {
+    payload.files = files;
+  }
+  try {
+    const sentMessage = await targetChannel.send(payload);
+    if (payload.content) {
+      setTimeout(async () => {
+        try {
+          await sentMessage.edit({ content: null });
+        } catch (editErr) {
+          log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
+        }
+      }, 5 * 60 * 1000);
+    }
+  } catch (err) {
+    log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
+  }
+}
+client.on('messageCreate', async (message) => {
+  const mapping = config.channelMappings.find(m => m.sourceChannelId === message.channel.id);
+  if (!mapping) return;
+  if (config.ignoreSelf && message.author.id === client.user.id) return;
+  if (config.ignoreBots && message.author.bot) return;
+  try {
+    if (config.messageDelay && config.messageDelay > 0) {
+      await sleep(config.messageDelay);
+    }
+    await forwardMessage(message, mapping);
+  } catch (error) {
+    log.error(`Gặp lỗi khi chuyển tiếp tin nhắn từ ID ${message.id}:`, error);
+  }
+});
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', async (data) => {
+  const command = data.trim().toLowerCase();
+  if (command === 'test') {
+    log.info('Đang chạy thử nghiệm chuyển tiếp tin nhắn gần nhất từ các kênh nguồn...');
+    let successCount = 0;
+    for (const mapping of config.channelMappings) {
+      try {
+        log.info(`Đang thử nghiệm kênh nguồn: ${mapping.sourceChannelId}`);
+        const sourceChannel = await client.channels.fetch(mapping.sourceChannelId, { force: true });
+        if (!sourceChannel) {
+          log.warn(`Không tìm thấy kênh nguồn ID ${mapping.sourceChannelId} (hoặc tài khoản không có quyền xem).`);
+          continue;
+        }
+        const messages = await sourceChannel.messages.fetch({ limit: 20 });
+        const lastMsg = messages.find(m => {
+          if (config.ignoreBots && m.author.bot) return false;
+          let compText = '';
+          if (m.components && m.components.length > 0) {
+            compText = extractComponentText(m.components);
+          }
+          const hasContent = (typeof m.content === 'string' && m.content.trim() !== '') || (compText.trim() !== '');
+          const hasEmbeds = m.embeds && m.embeds.length > 0;
+          const hasFiles = m.attachments && m.attachments.size > 0;
+          return hasContent || hasEmbeds || hasFiles;
+        });
+        if (lastMsg) {
+          await forwardMessage(lastMsg, mapping);
+          successCount++;
+        } else {
+          log.warn(`Không tìm thấy tin nhắn hợp lệ gần đây ở kênh #${sourceChannel.name} (ID: ${mapping.sourceChannelId}).`);
+        }
+      } catch (err) {
+        log.error(`Lỗi khi test kênh nguồn ID ${mapping.sourceChannelId}:`, err);
+      }
+    }
+    log.success(`Hoàn tất thử nghiệm! Chuyển tiếp thành công từ ${successCount}/${config.channelMappings.length} kênh nguồn.`);
+  }
+});
+client.on('error', (error) => {
+  log.error('Đã xảy ra lỗi kết nối Discord Selfbot Client:', error);
+});
+botClient.on('error', (error) => {
+  log.error('Đã xảy ra lỗi kết nối Discord Bot Client:', error);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Có lỗi chưa được xử lý trong Promise:', reason);
+});
+process.on('uncaughtException', (error) => {
+  log.error('Có lỗi nghiêm trọng chưa được bắt (uncaughtException):', error);
+});
+log.info('Đang kết nối tới Discord...');
+client.login(discordToken).catch(err => {
+  log.error('Không thể đăng nhập tài khoản Selfbot!', err);
+});
+botClient.login(botToken).catch(err => {
+  log.error('Không thể đăng nhập Bot thông báo!', err);
+});
