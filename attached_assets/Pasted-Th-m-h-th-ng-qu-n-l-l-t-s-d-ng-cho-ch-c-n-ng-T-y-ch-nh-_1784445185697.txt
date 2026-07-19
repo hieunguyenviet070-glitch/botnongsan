@@ -1,0 +1,230 @@
+Thêm hệ thống quản lý lượt sử dụng cho chức năng "Tùy chỉnh thông báo" hiện có.
+
+Không thay đổi bất kỳ chức năng nào khác của bot.
+
+========================
+1. LỆNH KIỂM TRA LƯỢT
+========================
+
+Thêm Slash Command:
+
+/usage check
+
+Quyền sử dụng:
+- Administrator
+
+Tham số:
+- user
+
+Hiển thị Embed Ephemeral gồm:
+
+- Người dùng
+- Giới hạn hiện tại
+- Lượt còn lại
+- Lượt đã sử dụng
+- Tổng lượt được cộng thêm
+- Số người đã mời
+- Role đang áp dụng
+
+Nếu người dùng thuộc Role không giới hạn thì hiển thị:
+
+♾️ Không giới hạn
+
+========================
+2. LỆNH CỘNG LƯỢT
+========================
+
+Slash Command:
+
+/usage add
+
+Quyền:
+- Administrator
+
+Tham số:
+
+- user
+- amount
+
+Ví dụ:
+
+/usage add @User 50
+
+Bot cộng thêm đúng số lượt vào remainingUses.
+
+Trả về Embed Ephemeral:
+
+✅ Đã cộng 50 lượt sử dụng cho @User.
+
+========================
+3. LỆNH TRỪ LƯỢT
+========================
+
+Slash Command:
+
+/usage remove
+
+Quyền:
+- Administrator
+
+Tham số:
+
+- user
+- amount
+
+Ví dụ:
+
+/usage remove @User 20
+
+Bot trừ đúng số lượt.
+
+Không cho remainingUses nhỏ hơn 0.
+
+Trả về:
+
+✅ Đã trừ 20 lượt sử dụng của @User.
+
+========================
+4. LỆNH ĐẶT LƯỢT
+========================
+
+Slash Command:
+
+/usage set
+
+Quyền:
+- Administrator
+
+Tham số:
+
+- user
+- amount
+
+Ví dụ:
+
+/usage set @User 0
+
+hoặc
+
+/usage set @User 150
+
+Bot đặt remainingUses đúng bằng amount.
+
+Trả về:
+
+✅ Đã đặt số lượt còn lại của @User thành 150.
+
+========================
+5. THÊM ROLE KHÔNG GIỚI HẠN
+========================
+
+Không hardcode Role trong source.
+
+Toàn bộ Role miễn giới hạn được lưu MongoDB.
+
+Model:
+
+- guildId
+- roleId
+- createdAt
+
+Slash Command:
+
+/usage bypass add
+
+Quyền:
+- Administrator
+
+Tham số:
+
+- role
+
+Ví dụ:
+
+/usage bypass add @VIP
+
+Bot lưu Role vào MongoDB.
+
+Trả về:
+
+✅ Đã thêm @VIP vào danh sách Role không giới hạn.
+
+========================
+6. XÓA ROLE KHÔNG GIỚI HẠN
+========================
+
+Slash Command:
+
+/usage bypass remove
+
+Quyền:
+- Administrator
+
+Tham số:
+
+- role
+
+Ví dụ:
+
+/usage bypass remove @VIP
+
+Bot xóa khỏi MongoDB.
+
+Trả về:
+
+✅ Đã xóa @VIP khỏi danh sách Role không giới hạn.
+
+========================
+7. DANH SÁCH ROLE KHÔNG GIỚI HẠN
+========================
+
+Slash Command:
+
+/usage bypass list
+
+Quyền:
+- Administrator
+
+Bot đọc MongoDB.
+
+Hiển thị toàn bộ Role đang được miễn giới hạn.
+
+Ví dụ:
+
+♾️ Danh sách Role không giới hạn
+
+• @VIP
+• @Booster
+• @Developer
+• @Admin
+
+Nếu chưa có:
+
+Chưa có Role nào được cấu hình.
+
+========================
+8. QUY TẮC
+========================
+
+- Nếu người dùng có ít nhất một Role nằm trong danh sách bypass:
+    • Không kiểm tra remainingUses.
+    • Không bị trừ lượt.
+    • Không hiện thông báo hết lượt.
+    • Luôn được sử dụng bình thường.
+
+- Không cần khởi động lại bot sau khi thêm hoặc xóa Role.
+
+- Danh sách Role được cập nhật ngay khi thay đổi.
+
+========================
+9. YÊU CẦU KỸ THUẬT
+========================
+
+- Discord.js v14
+- MongoDB (Mongoose)
+- Slash Commands
+- Listener tách riêng
+- Model MongoDB tách riêng
+- Chỉ Administrator mới sử dụng được các lệnh trên.
+- Tất cả phản hồi đều sử dụng Embed Ephemeral (riêng tư).
+- Không thay đổi hoặc ảnh hưởng bất kỳ chức năng nào khác của bot.

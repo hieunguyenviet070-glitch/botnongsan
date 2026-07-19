@@ -1331,6 +1331,10 @@ async function registerSlashCommands(guild) {
             ]
           },
           {
+            type: 1, name: 'reset', description: 'Reset lượt về mức giới hạn tháng của người dùng',
+            options: [{ type: 6, name: 'user', description: 'Người dùng cần reset', required: true }]
+          },
+          {
             type: 2, name: 'bypass', description: 'Quản lý Role không giới hạn',
             options: [
               {

@@ -176,6 +176,35 @@ async function handleSet(interaction, guild) {
   }
 }
 
+async function handleReset(interaction, guild) {
+  const targetUser = interaction.options.getUser('user', true);
+  try {
+    // Lấy member để tính đúng monthly limit của họ
+    let targetMember;
+    try {
+      targetMember = await guild.members.fetch(targetUser.id);
+    } catch (_) {
+      return interaction.reply(ephemeral(errorEmbed(`❌ Không tìm thấy thành viên <@${targetUser.id}> trên server này.`)));
+    }
+
+    const userLimit = await getUserLimit(targetMember);
+    const effectiveLimit = userLimit === Infinity ? DEFAULT_LIMIT : userLimit;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    await UsageLimit.findOneAndUpdate(
+      { guildId: guild.id, userId: targetUser.id },
+      {
+        $set: { remainingUses: effectiveLimit, monthlyLimit: effectiveLimit, lastResetMonth: currentMonth },
+        $setOnInsert: { pendingInviteRewards: 0, totalInvites: 0 }
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+    return interaction.reply(ephemeral(successEmbed(`✅ Đã reset lượt sử dụng của <@${targetUser.id}> về **${effectiveLimit} lượt** (giới hạn tháng hiện tại).`)));
+  } catch (err) {
+    return interaction.reply(ephemeral(errorEmbed(`❌ Lỗi MongoDB: ${err.message}`)));
+  }
+}
+
 async function handleBypassAdd(interaction, guild) {
   const role = interaction.options.getRole('role', true);
   try {
@@ -247,6 +276,7 @@ async function handleUsageCommand(interaction, guild, member) {
     if (sub === 'add')    return handleAdd(interaction, guild);
     if (sub === 'remove') return handleRemove(interaction, guild);
     if (sub === 'set')    return handleSet(interaction, guild);
+    if (sub === 'reset')  return handleReset(interaction, guild);
   }
 }
 
