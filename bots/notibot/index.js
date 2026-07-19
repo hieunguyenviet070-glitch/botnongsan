@@ -93,6 +93,8 @@ const inviteCache = new Map();
 // ─── Role-based usage limits (bypass roles managed in MongoDB) ───────────────
 const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('./utils/usageUtils.js');
 const { handleUsageCommand } = require('./listeners/usageCommands.js');
+const inviteSystem = require('./listeners/inviteSystem.js');
+const UserInvite = require('./models/UserInvite.js');
 // ─────────────────────────────────────────────────────────────────────────────
 function extractComponentText(components) {
   if (!components || !Array.isArray(components)) return '';
@@ -1555,28 +1557,7 @@ botClient.on('interactionCreate', async (interaction) => {
           components: rows
         });
       } else if (interaction.customId === 'setup_limit_invite') {
-        let usageDoc = null;
-        try {
-          usageDoc = await UsageLimit.findOne({ guildId: guild.id, userId: interaction.user.id });
-        } catch (dbErr) {
-          log.error('Lỗi MongoDB khi lấy thông tin mời:', dbErr.message);
-        }
-        const pending = usageDoc ? (usageDoc.pendingInviteRewards % 5) : 0;
-        const needMore = 5 - pending;
-        const inviteEmbed = {
-          color: 0x3498db,
-          title: '👥 Mời bạn bè để nhận thêm lượt',
-          description: [
-            '**Cách hoạt động:** Bot tự động phát hiện khi bạn mời ai đó vào server.',
-            'Mỗi khi **5 người được mời ở lại**, bạn nhận **+50 lượt** tùy chỉnh.',
-            '',
-            `📊 **Tiến trình:** ${pending}/5 (cần thêm **${needMore}** người để nhận +50 lượt)`,
-            `👤 **Tổng số người đã mời:** ${usageDoc ? usageDoc.totalInvites : 0} người`,
-            '',
-            '_Nếu người được mời rời server, lượt sẽ bị trừ lại._',
-          ].join('\n'),
-        };
-        return interaction.reply({ embeds: [inviteEmbed], ephemeral: true });
+        return inviteSystem.handleInviteButton(interaction, guild);
       } else if (interaction.customId === 'setup_all_notifs') {
         await interaction.deferUpdate();
         const mainKeys = ['main_seed', 'main_weather', 'main_tool', 'main_refresh'];
@@ -1668,6 +1649,8 @@ botClient.on('ready', async () => {
       log.warn(`Không thể cache invite cho server ${g.name}: ${err.message}`);
     }
   }
+  // Khởi tạo hệ thống invite (sau khi cache đã được populate)
+  inviteSystem.init(inviteCache, log, botClient);
   log.success(`Bot thông báo đã sẵn sàng!`);
 });
 async function forwardMessage(message, mapping) {
@@ -1815,90 +1798,11 @@ async function deductUsageForRoles(guild, roleIds) {
 }
 // ─── Invite tracking & usage deduction on member join/leave ─────────────────
 
-botClient.on('inviteCreate', (invite) => {
-  const guildId = invite.guild ? invite.guild.id : null;
-  if (!guildId) return;
-  const gMap = inviteCache.get(guildId) || new Map();
-  gMap.set(invite.code, { uses: invite.uses || 0, inviterId: invite.inviter ? invite.inviter.id : null });
-  inviteCache.set(guildId, gMap);
-});
+botClient.on('inviteCreate', (invite) => inviteSystem.handleInviteCreate(invite));
+botClient.on('inviteDelete', (invite) => inviteSystem.handleInviteDelete(invite));
 
-botClient.on('inviteDelete', (invite) => {
-  const guildId = invite.guild ? invite.guild.id : null;
-  if (!guildId) return;
-  const gMap = inviteCache.get(guildId);
-  if (gMap) gMap.delete(invite.code);
-});
-
-botClient.on('guildMemberAdd', async (member) => {
-  const g = member.guild;
-  try {
-    const cachedInvites = inviteCache.get(g.id) || new Map();
-    const freshInvites = await g.invites.fetch();
-    // Find which invite gained a use
-    let usedInvite = null;
-    freshInvites.forEach(inv => {
-      const cached = cachedInvites.get(inv.code);
-      if ((cached && inv.uses > cached.uses) || (!cached && inv.uses > 0)) {
-        usedInvite = inv;
-      }
-    });
-    // Refresh cache
-    const newMap = new Map();
-    freshInvites.forEach(inv => newMap.set(inv.code, { uses: inv.uses, inviterId: inv.inviter ? inv.inviter.id : null }));
-    inviteCache.set(g.id, newMap);
-
-    if (!usedInvite || !usedInvite.inviter) return;
-    const inviterId = usedInvite.inviter.id;
-    const currentMonth = new Date().toISOString().slice(0, 7);
-
-    // Persist the join so we can decrement on leave
-    try {
-      await JoinRecord.create({ guildId: g.id, userId: member.id, inviterId, inviteCode: usedInvite.code });
-    } catch (_) { /* ignore duplicate */ }
-
-    // Increment inviter's counts
-    const inviterDoc = await UsageLimit.findOneAndUpdate(
-      { guildId: g.id, userId: inviterId },
-      {
-        $inc: { pendingInviteRewards: 1, totalInvites: 1 },
-        $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth }
-      },
-      { upsert: true, new: true }
-    );
-    log.info(`[Invite] ${member.user.tag} tham gia qua invite của ${usedInvite.inviter.tag} — pending: ${inviterDoc.pendingInviteRewards}`);
-
-    // Every 5 invites → +50 uses
-    if (inviterDoc.pendingInviteRewards > 0 && inviterDoc.pendingInviteRewards % 5 === 0) {
-      await UsageLimit.updateOne({ guildId: g.id, userId: inviterId }, { $inc: { remainingUses: 50 } });
-      log.success(`[Invite] +50 lượt cho ${inviterId} sau ${inviterDoc.pendingInviteRewards} người được mời`);
-      try {
-        const inviterUser = await botClient.users.fetch(inviterId);
-        await inviterUser.send(
-          `🎉 Bạn vừa đạt **${inviterDoc.pendingInviteRewards} người mời** thành công trên server!\n` +
-          `**+50 lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`
-        );
-      } catch (_) { /* DM có thể bị tắt */ }
-    }
-  } catch (err) {
-    log.error('Lỗi khi xử lý guildMemberAdd (invite tracking):', err.message);
-  }
-});
-
-botClient.on('guildMemberRemove', async (member) => {
-  const g = member.guild;
-  try {
-    const joinRecord = await JoinRecord.findOneAndDelete({ guildId: g.id, userId: member.id });
-    if (!joinRecord || !joinRecord.inviterId) return;
-    await UsageLimit.updateOne(
-      { guildId: g.id, userId: joinRecord.inviterId },
-      { $inc: { pendingInviteRewards: -1, totalInvites: -1 } }
-    );
-    log.info(`[Invite] ${member.user.tag} rời server — trừ 1 invite của ${joinRecord.inviterId}`);
-  } catch (err) {
-    log.error('Lỗi khi xử lý guildMemberRemove (invite tracking):', err.message);
-  }
-});
+botClient.on('guildMemberAdd',    async (member) => inviteSystem.handleGuildMemberAdd(member));
+botClient.on('guildMemberRemove', async (member) => inviteSystem.handleGuildMemberRemove(member));
 
 // ─────────────────────────────────────────────────────────────────────────────
 
