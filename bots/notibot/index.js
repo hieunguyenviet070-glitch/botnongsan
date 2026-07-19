@@ -89,6 +89,36 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const lastSentMessages = new Map();
 // Map<guildId, Map<inviteCode, { uses, inviterId }>>  — for invite tracking
 const inviteCache = new Map();
+
+// ─── Role-based usage limits ──────────────────────────────────────────────────
+// Infinity = unlimited (skip all checks and deductions entirely)
+const ROLE_LIMITS = {
+  '1512799562149003275': 100,
+  '1514290379787079881': 200,
+  '1512099086990577675': Infinity,
+  '1512910004548669500': Infinity,
+  '1527648606725738638': Infinity,
+  '1512797959631147008': Infinity,
+  '1522069754909556837': Infinity,
+};
+const DEFAULT_LIMIT = 50;
+
+/**
+ * Returns the monthly usage limit for a GuildMember.
+ * Always returns the highest privilege the member holds.
+ * Infinity means unlimited — no checks, no deductions.
+ */
+function getUserLimit(member) {
+  let best = DEFAULT_LIMIT;
+  for (const [roleId, limit] of Object.entries(ROLE_LIMITS)) {
+    if (member.roles.cache.has(roleId)) {
+      if (limit === Infinity) return Infinity;
+      if (limit > best) best = limit;
+    }
+  }
+  return best;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 function extractComponentText(components) {
   if (!components || !Array.isArray(components)) return '';
   let text = '';
@@ -1404,51 +1434,63 @@ botClient.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
         // --- Kiểm tra giới hạn sử dụng hàng tháng ---
-        let usageDoc = null;
-        try {
-          const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-          usageDoc = await UsageLimit.findOneAndUpdate(
-            { guildId: guild.id, userId: interaction.user.id },
-            { $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
-            { upsert: true, new: true }
-          );
-          // Reset đầu tháng nếu cần
-          if (usageDoc.lastResetMonth !== currentMonth) {
+        const userLimit = getUserLimit(member);
+        // Unlimited roles: bỏ qua hoàn toàn, mở panel ngay
+        if (userLimit !== Infinity) {
+          let usageDoc = null;
+          try {
+            const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
             usageDoc = await UsageLimit.findOneAndUpdate(
               { guildId: guild.id, userId: interaction.user.id },
-              { $set: { remainingUses: usageDoc.monthlyLimit, lastResetMonth: currentMonth } },
-              { new: true }
+              { $setOnInsert: { remainingUses: userLimit, monthlyLimit: userLimit, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
+              { upsert: true, new: true }
             );
+            // Đồng bộ monthlyLimit nếu role đã thay đổi
+            if (usageDoc.monthlyLimit !== userLimit) {
+              usageDoc = await UsageLimit.findOneAndUpdate(
+                { guildId: guild.id, userId: interaction.user.id },
+                { $set: { monthlyLimit: userLimit } },
+                { new: true }
+              );
+            }
+            // Reset đầu tháng nếu cần
+            if (usageDoc.lastResetMonth !== currentMonth) {
+              usageDoc = await UsageLimit.findOneAndUpdate(
+                { guildId: guild.id, userId: interaction.user.id },
+                { $set: { remainingUses: usageDoc.monthlyLimit, lastResetMonth: currentMonth } },
+                { new: true }
+              );
+            }
+          } catch (dbErr) {
+            log.error('Lỗi MongoDB khi kiểm tra giới hạn sử dụng:', dbErr.message);
           }
-        } catch (dbErr) {
-          log.error('Lỗi MongoDB khi kiểm tra giới hạn sử dụng:', dbErr.message);
-        }
-        if (usageDoc && usageDoc.remainingUses <= 0) {
-          const limitEmbed = {
-            color: 0xe74c3c,
-            title: '❌ Đã hết lượt tùy chỉnh tháng này',
-            description: [
-              `Bạn đã dùng hết **${usageDoc.monthlyLimit} lượt** tùy chỉnh thông báo trong tháng này.`,
-              '',
-              '**Cách mở khóa thêm lượt:**',
-              '• 💝 **Donate** — nhận thêm lượt ngay lập tức',
-              '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+50 lượt**',
-              '',
-              '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
-            ].join('\n'),
-            footer: { text: `Lượt còn lại: 0 / ${usageDoc.monthlyLimit}` }
-          };
-          const limitRow = new MessageActionRow().addComponents(
-            new MessageButton()
-              .setLabel('💝 Donate')
-              .setStyle('LINK')
-              .setURL('https://buymeacoffee.com/notibot'),
-            new MessageButton()
-              .setCustomId('setup_limit_invite')
-              .setLabel('👥 Mời bạn bè')
-              .setStyle('PRIMARY')
-          );
-          return interaction.reply({ embeds: [limitEmbed], components: [limitRow], ephemeral: true });
+          if (usageDoc && usageDoc.remainingUses <= 0) {
+            const limitEmbed = {
+              color: 0xe74c3c,
+              title: '❌ Đã hết lượt tùy chỉnh tháng này',
+              description: [
+                `Bạn đã dùng hết **${usageDoc.monthlyLimit} lượt** tùy chỉnh thông báo trong tháng này.`,
+                '',
+                '**Cách mở khóa thêm lượt:**',
+                '• 💝 **Donate** — nhận thêm lượt ngay lập tức',
+                '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+50 lượt**',
+                '',
+                '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
+              ].join('\n'),
+              footer: { text: `Lượt còn lại: 0 / ${usageDoc.monthlyLimit}` }
+            };
+            const limitRow = new MessageActionRow().addComponents(
+              new MessageButton()
+                .setLabel('💝 Donate')
+                .setStyle('LINK')
+                .setURL('https://buymeacoffee.com/notibot'),
+              new MessageButton()
+                .setCustomId('setup_limit_invite')
+                .setLabel('👥 Mời bạn bè')
+                .setStyle('PRIMARY')
+            );
+            return interaction.reply({ embeds: [limitEmbed], components: [limitRow], ephemeral: true });
+          }
         }
         // --- Hết kiểm tra ---
         const rows = buildSetupComponents(member);
@@ -1698,27 +1740,38 @@ async function forwardMessage(message, mapping) {
  */
 async function deductUsageForRoles(guild, roleIds) {
   const currentMonth = new Date().toISOString().slice(0, 7);
-  // Collect unique member IDs across all tagged roles
-  const affectedMemberIds = new Set();
+  // Fetch all guild members into cache (needed to read their roles)
+  try {
+    await guild.members.fetch({ force: false });
+  } catch (_) { /* ignore */ }
+  // Collect unique GuildMember objects across all tagged roles
+  const affectedMembers = new Map(); // userId → GuildMember
   for (const roleId of roleIds) {
     const role = guild.roles.cache.get(roleId);
     if (!role) continue;
-    // Fetch role members if not cached
-    try {
-      await guild.members.fetch({ force: false });
-    } catch (_) { /* ignore */ }
-    role.members.forEach(m => affectedMemberIds.add(m.id));
+    role.members.forEach(m => affectedMembers.set(m.id, m));
   }
-  if (affectedMemberIds.size === 0) return;
-  for (const userId of affectedMemberIds) {
+  if (affectedMembers.size === 0) return;
+  for (const [userId, guildMember] of affectedMembers) {
     try {
-      // Upsert: ensure document exists, then decrement (min 0)
+      const userLimit = getUserLimit(guildMember);
+      // Unlimited roles: bỏ qua hoàn toàn
+      if (userLimit === Infinity) continue;
+      // Upsert với đúng limit của user
       let doc = await UsageLimit.findOneAndUpdate(
         { guildId: guild.id, userId },
-        { $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
+        { $setOnInsert: { remainingUses: userLimit, monthlyLimit: userLimit, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
         { upsert: true, new: true }
       );
-      // Monthly reset check
+      // Đồng bộ monthlyLimit nếu role người dùng đã thay đổi
+      if (doc.monthlyLimit !== userLimit) {
+        doc = await UsageLimit.findOneAndUpdate(
+          { guildId: guild.id, userId },
+          { $set: { monthlyLimit: userLimit } },
+          { new: true }
+        );
+      }
+      // Reset đầu tháng nếu cần
       if (doc.lastResetMonth !== currentMonth) {
         doc = await UsageLimit.findOneAndUpdate(
           { guildId: guild.id, userId },
