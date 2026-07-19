@@ -410,10 +410,15 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
   const match = cleanRawText.match(/\[(\d{1,2}:\d{2})\]\s*(.*)$/s);
   if (!match) return null;
   let startTimeStr = match[1];
-  // Kênh báo-nông-cụ: dùng giờ thực của máy chủ làm thời điểm bắt đầu
+  // Kênh báo-nông-cụ: dùng giờ Việt Nam hiện tại làm thời điểm bắt đầu
   if (targetChannelId === '1522313809123868813') {
-    const now = new Date();
-    startTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const vnFormatter = new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    startTimeStr = vnFormatter.format(new Date()).replace('.', ':').replace(/[^\d:]/g, '').slice(0, 5);
   }
   const itemsPart = match[2].trim();
   const rawItems = itemsPart.split(/\s*-\s*/);
