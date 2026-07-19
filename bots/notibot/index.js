@@ -1509,9 +1509,9 @@ botClient.on('interactionCreate', async (interaction) => {
             };
             const limitRow = new MessageActionRow().addComponents(
               new MessageButton()
-                .setLabel('💝 Donate')
+                .setLabel('💸 Donate')
                 .setStyle('LINK')
-                .setURL('https://buymeacoffee.com/notibot'),
+                .setURL('https://discord.com/channels/1363986043509932093/1514934088870662184'),
               new MessageButton()
                 .setCustomId('setup_limit_invite')
                 .setLabel('👥 Mời bạn bè')
