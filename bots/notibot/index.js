@@ -342,13 +342,18 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
   }
 
   if (targetChannelId === '1512092816837181440') {
-    const timeRegex = /(\d{1,2}:\d{2})/g;
-    const timeMatches = combined.match(timeRegex);
-    const startTime = timeMatches ? timeMatches[0] : null;
-    
+    // Luôn dùng giờ thực của máy chủ theo múi giờ Việt Nam (UTC+7)
+    const vnFormatter = new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const startTime = vnFormatter.format(new Date());
+
     let embedTitle = '';
     let embedDesc = '';
-    
+
     if (matchedRule) {
       let emoji = matchedRule.fallbackEmoji;
       if (emojiConfig.emojis && emojiConfig.emojis[matchedRule.emojiKey]) {
@@ -359,18 +364,12 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
       }
       embedTitle = `${emoji} ${matchedRule.weatherName} đang xuất hiện`;
       embedDesc = `Nông sản biến thể: ${matchedRule.variantName}`;
-      if (startTime) {
-        embedDesc += `\n\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
-      }
+      embedDesc += `\n\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
     } else {
       let cleanTitle = titleText || combined.split('\n')[0] || 'Thông báo thời tiết';
       cleanTitle = cleanTitle.replace(/\[\d{1,2}:\d{2}\]|\b\d{1,2}:\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
       embedTitle = cleanTitle;
-      if (startTime) {
-        embedDesc = `-# Thời gian: ${startTime}`;
-      } else {
-        embedDesc = '_Không có chi tiết thời gian_';
-      }
+      embedDesc = `-# Thời gian: ${startTime}`;
     }
     
     return {
