@@ -3,6 +3,9 @@ const { Client } = require('discord.js-selfbot-v13');
 const { Client: BotClient, MessageActionRow, MessageButton, MessageSelectMenu } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { connectDB } = require('./db.js');
+const UsageLimit = require('./models/UsageLimit.js');
+const JoinRecord = require('./models/JoinRecord.js');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const colors = {
   reset: '\x1b[0m',
@@ -80,10 +83,12 @@ const client = new Client({
   checkUpdate: false,
 });
 const botClient = new BotClient({
-  intents: ['GUILDS', 'GUILD_MESSAGES']
+  intents: ['GUILDS', 'GUILD_MESSAGES', 'GUILD_MEMBERS', 'GUILD_INVITES']
 });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const lastSentMessages = new Map();
+// Map<guildId, Map<inviteCode, { uses, inviterId }>>  — for invite tracking
+const inviteCache = new Map();
 function extractComponentText(components) {
   if (!components || !Array.isArray(components)) return '';
   let text = '';
@@ -1393,6 +1398,54 @@ botClient.on('interactionCreate', async (interaction) => {
       }
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
+        // --- Kiểm tra giới hạn sử dụng hàng tháng ---
+        let usageDoc = null;
+        try {
+          const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+          usageDoc = await UsageLimit.findOneAndUpdate(
+            { guildId: guild.id, userId: interaction.user.id },
+            { $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
+            { upsert: true, new: true }
+          );
+          // Reset đầu tháng nếu cần
+          if (usageDoc.lastResetMonth !== currentMonth) {
+            usageDoc = await UsageLimit.findOneAndUpdate(
+              { guildId: guild.id, userId: interaction.user.id },
+              { $set: { remainingUses: usageDoc.monthlyLimit, lastResetMonth: currentMonth } },
+              { new: true }
+            );
+          }
+        } catch (dbErr) {
+          log.error('Lỗi MongoDB khi kiểm tra giới hạn sử dụng:', dbErr.message);
+        }
+        if (usageDoc && usageDoc.remainingUses <= 0) {
+          const limitEmbed = {
+            color: 0xe74c3c,
+            title: '❌ Đã hết lượt tùy chỉnh tháng này',
+            description: [
+              `Bạn đã dùng hết **${usageDoc.monthlyLimit} lượt** tùy chỉnh thông báo trong tháng này.`,
+              '',
+              '**Cách mở khóa thêm lượt:**',
+              '• 💝 **Donate** — nhận thêm lượt ngay lập tức',
+              '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+50 lượt**',
+              '',
+              '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
+            ].join('\n'),
+            footer: { text: `Lượt còn lại: 0 / ${usageDoc.monthlyLimit}` }
+          };
+          const limitRow = new MessageActionRow().addComponents(
+            new MessageButton()
+              .setLabel('💝 Donate')
+              .setStyle('LINK')
+              .setURL('https://buymeacoffee.com/notibot'),
+            new MessageButton()
+              .setCustomId('setup_limit_invite')
+              .setLabel('👥 Mời bạn bè')
+              .setStyle('PRIMARY')
+          );
+          return interaction.reply({ embeds: [limitEmbed], components: [limitRow], ephemeral: true });
+        }
+        // --- Hết kiểm tra ---
         const rows = buildSetupComponents(member);
         await interaction.reply({
           components: rows,
@@ -1428,6 +1481,29 @@ botClient.on('interactionCreate', async (interaction) => {
           embeds: [],
           components: rows
         });
+      } else if (interaction.customId === 'setup_limit_invite') {
+        let usageDoc = null;
+        try {
+          usageDoc = await UsageLimit.findOne({ guildId: guild.id, userId: interaction.user.id });
+        } catch (dbErr) {
+          log.error('Lỗi MongoDB khi lấy thông tin mời:', dbErr.message);
+        }
+        const pending = usageDoc ? (usageDoc.pendingInviteRewards % 5) : 0;
+        const needMore = 5 - pending;
+        const inviteEmbed = {
+          color: 0x3498db,
+          title: '👥 Mời bạn bè để nhận thêm lượt',
+          description: [
+            '**Cách hoạt động:** Bot tự động phát hiện khi bạn mời ai đó vào server.',
+            'Mỗi khi **5 người được mời ở lại**, bạn nhận **+50 lượt** tùy chỉnh.',
+            '',
+            `📊 **Tiến trình:** ${pending}/5 (cần thêm **${needMore}** người để nhận +50 lượt)`,
+            `👤 **Tổng số người đã mời:** ${usageDoc ? usageDoc.totalInvites : 0} người`,
+            '',
+            '_Nếu người được mời rời server, lượt sẽ bị trừ lại._',
+          ].join('\n'),
+        };
+        return interaction.reply({ embeds: [inviteEmbed], ephemeral: true });
       } else if (interaction.customId === 'setup_all_notifs') {
         await interaction.deferUpdate();
         const mainKeys = ['main_seed', 'main_weather', 'main_tool', 'main_refresh'];
@@ -1500,6 +1576,25 @@ botClient.on('ready', async () => {
     }
   }
   await registerCommandsForTargetGuilds();
+  // Kết nối MongoDB
+  try {
+    await connectDB();
+    log.success('Đã kết nối MongoDB!');
+  } catch (dbErr) {
+    log.warn('Không thể kết nối MongoDB — hệ thống giới hạn sử dụng sẽ bị tắt: ' + dbErr.message);
+  }
+  // Cache invite cho tất cả guild hiện tại
+  for (const g of botClient.guilds.cache.values()) {
+    try {
+      const invites = await g.invites.fetch();
+      const gMap = new Map();
+      invites.forEach(inv => gMap.set(inv.code, { uses: inv.uses, inviterId: inv.inviter ? inv.inviter.id : null }));
+      inviteCache.set(g.id, gMap);
+      log.info(`Đã cache ${gMap.size} invite(s) cho server: ${g.name}`);
+    } catch (err) {
+      log.warn(`Không thể cache invite cho server ${g.name}: ${err.message}`);
+    }
+  }
   log.success(`Bot thông báo đã sẵn sàng!`);
 });
 async function forwardMessage(message, mapping) {
@@ -1570,6 +1665,13 @@ async function forwardMessage(message, mapping) {
   try {
     const sentMessage = await targetChannel.send(payload);
     if (payload.content) {
+      // Trừ lượt sử dụng cho từng thành viên có role được tag
+      const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
+      if (taggedRoleIds.length > 0 && targetGuild) {
+        deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
+          log.error('Lỗi khi trừ lượt sử dụng:', err.message)
+        );
+      }
       // Kênh báo-nông-cụ thu hồi role sau 30 phút, các kênh khác sau 5 phút
       const revokeDelay = mapping.targetChannelId === '1522313809123868813' ? 30 * 60 * 1000 : 5 * 60 * 1000;
       setTimeout(async () => {
@@ -1584,6 +1686,138 @@ async function forwardMessage(message, mapping) {
     log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
   }
 }
+
+/**
+ * Trừ 1 lượt sử dụng cho mỗi thành viên đang có ít nhất một trong các role được tag.
+ * Chạy bất đồng bộ — không block việc gửi tin nhắn.
+ */
+async function deductUsageForRoles(guild, roleIds) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  // Collect unique member IDs across all tagged roles
+  const affectedMemberIds = new Set();
+  for (const roleId of roleIds) {
+    const role = guild.roles.cache.get(roleId);
+    if (!role) continue;
+    // Fetch role members if not cached
+    try {
+      await guild.members.fetch({ force: false });
+    } catch (_) { /* ignore */ }
+    role.members.forEach(m => affectedMemberIds.add(m.id));
+  }
+  if (affectedMemberIds.size === 0) return;
+  for (const userId of affectedMemberIds) {
+    try {
+      // Upsert: ensure document exists, then decrement (min 0)
+      let doc = await UsageLimit.findOneAndUpdate(
+        { guildId: guild.id, userId },
+        { $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
+        { upsert: true, new: true }
+      );
+      // Monthly reset check
+      if (doc.lastResetMonth !== currentMonth) {
+        doc = await UsageLimit.findOneAndUpdate(
+          { guildId: guild.id, userId },
+          { $set: { remainingUses: doc.monthlyLimit, lastResetMonth: currentMonth } },
+          { new: true }
+        );
+      }
+      if (doc.remainingUses > 0) {
+        await UsageLimit.updateOne({ guildId: guild.id, userId }, { $inc: { remainingUses: -1 } });
+      }
+    } catch (err) {
+      log.error(`Lỗi khi trừ lượt sử dụng cho ${userId}:`, err.message);
+    }
+  }
+}
+// ─── Invite tracking & usage deduction on member join/leave ─────────────────
+
+botClient.on('inviteCreate', (invite) => {
+  const guildId = invite.guild ? invite.guild.id : null;
+  if (!guildId) return;
+  const gMap = inviteCache.get(guildId) || new Map();
+  gMap.set(invite.code, { uses: invite.uses || 0, inviterId: invite.inviter ? invite.inviter.id : null });
+  inviteCache.set(guildId, gMap);
+});
+
+botClient.on('inviteDelete', (invite) => {
+  const guildId = invite.guild ? invite.guild.id : null;
+  if (!guildId) return;
+  const gMap = inviteCache.get(guildId);
+  if (gMap) gMap.delete(invite.code);
+});
+
+botClient.on('guildMemberAdd', async (member) => {
+  const g = member.guild;
+  try {
+    const cachedInvites = inviteCache.get(g.id) || new Map();
+    const freshInvites = await g.invites.fetch();
+    // Find which invite gained a use
+    let usedInvite = null;
+    freshInvites.forEach(inv => {
+      const cached = cachedInvites.get(inv.code);
+      if ((cached && inv.uses > cached.uses) || (!cached && inv.uses > 0)) {
+        usedInvite = inv;
+      }
+    });
+    // Refresh cache
+    const newMap = new Map();
+    freshInvites.forEach(inv => newMap.set(inv.code, { uses: inv.uses, inviterId: inv.inviter ? inv.inviter.id : null }));
+    inviteCache.set(g.id, newMap);
+
+    if (!usedInvite || !usedInvite.inviter) return;
+    const inviterId = usedInvite.inviter.id;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    // Persist the join so we can decrement on leave
+    try {
+      await JoinRecord.create({ guildId: g.id, userId: member.id, inviterId, inviteCode: usedInvite.code });
+    } catch (_) { /* ignore duplicate */ }
+
+    // Increment inviter's counts
+    const inviterDoc = await UsageLimit.findOneAndUpdate(
+      { guildId: g.id, userId: inviterId },
+      {
+        $inc: { pendingInviteRewards: 1, totalInvites: 1 },
+        $setOnInsert: { remainingUses: 50, monthlyLimit: 50, lastResetMonth: currentMonth }
+      },
+      { upsert: true, new: true }
+    );
+    log.info(`[Invite] ${member.user.tag} tham gia qua invite của ${usedInvite.inviter.tag} — pending: ${inviterDoc.pendingInviteRewards}`);
+
+    // Every 5 invites → +50 uses
+    if (inviterDoc.pendingInviteRewards > 0 && inviterDoc.pendingInviteRewards % 5 === 0) {
+      await UsageLimit.updateOne({ guildId: g.id, userId: inviterId }, { $inc: { remainingUses: 50 } });
+      log.success(`[Invite] +50 lượt cho ${inviterId} sau ${inviterDoc.pendingInviteRewards} người được mời`);
+      try {
+        const inviterUser = await botClient.users.fetch(inviterId);
+        await inviterUser.send(
+          `🎉 Bạn vừa đạt **${inviterDoc.pendingInviteRewards} người mời** thành công trên server!\n` +
+          `**+50 lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`
+        );
+      } catch (_) { /* DM có thể bị tắt */ }
+    }
+  } catch (err) {
+    log.error('Lỗi khi xử lý guildMemberAdd (invite tracking):', err.message);
+  }
+});
+
+botClient.on('guildMemberRemove', async (member) => {
+  const g = member.guild;
+  try {
+    const joinRecord = await JoinRecord.findOneAndDelete({ guildId: g.id, userId: member.id });
+    if (!joinRecord || !joinRecord.inviterId) return;
+    await UsageLimit.updateOne(
+      { guildId: g.id, userId: joinRecord.inviterId },
+      { $inc: { pendingInviteRewards: -1, totalInvites: -1 } }
+    );
+    log.info(`[Invite] ${member.user.tag} rời server — trừ 1 invite của ${joinRecord.inviterId}`);
+  } catch (err) {
+    log.error('Lỗi khi xử lý guildMemberRemove (invite tracking):', err.message);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 client.on('messageCreate', async (message) => {
   const mapping = config.channelMappings.find(m => m.sourceChannelId === message.channel.id);
   if (!mapping) return;
