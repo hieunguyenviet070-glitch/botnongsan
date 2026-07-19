@@ -1,0 +1,159 @@
+Thêm hệ thống giới hạn sử dụng cho chức năng *"Tùy chỉnh thông báo"* hiện có.
+
+Phạm vi áp dụng:
+
+- Chỉ áp dụng cho giao diện "Tùy chỉnh thông báo" tại kênh *⚙️｜setup-thông-báo*.
+- Không ảnh hưởng đến bất kỳ hệ thống hoặc chức năng nào khác của bot.
+
+Yêu cầu:
+
+- Mỗi người dùng mặc định có *50 lượt sử dụng mỗi tháng*.
+- Dữ liệu lưu bằng *MongoDB (Mongoose)*.
+- Đầu mỗi tháng tự động reset về *50 lượt*.
+- Hệ thống vẫn hoạt động bình thường sau khi bot khởi động lại.
+
+Các kênh được áp dụng để gửi thông báo:
+
+- 🌱｜báo-hạt-giống
+- 🌦️｜báo-thời-tiết
+- 🚜｜báo-nông-cụ
+- 🏪｜refresh-gian-hàng
+
+## Cách tính lượt
+
+- Người dùng *KHÔNG bị trừ lượt* khi mở giao diện "Tùy chỉnh thông báo".
+- Người dùng *KHÔNG bị trừ lượt* khi chỉnh sửa hoặc lưu cấu hình.
+- Chỉ khi bot *thực sự gửi một thông báo có tag role* theo cấu hình của người dùng tại một trong bốn kênh trên thì mới *trừ 1 lượt sử dụng*.
+- Một thông báo gửi thành công = trừ 1 lượt.
+- Nếu một thông báo tag nhiều role thì vẫn chỉ tính là *1 lượt*.
+
+## Khi người dùng nhấn nút "Tùy chỉnh thông báo"
+
+Nếu còn lượt:
+
+- Mở giao diện như hiện tại.
+- Giữ nguyên toàn bộ chức năng đang có.
+
+Nếu đã hết lượt:
+
+- Không mở giao diện.
+- Không cho phép cấu hình thông báo.
+- Gửi *Embed Ephemeral (riêng tư)*.
+
+Nội dung:
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ *Bạn đã hết lượt sử dụng miễn phí trong tháng này.*
+
+Để tiếp tục sử dụng tính năng thông báo, vui lòng chọn một trong hai cách sau:
+
+1️⃣ Donate để mở khóa và sử dụng ngay.
+
+2️⃣ Mời *05 người bạn* tham gia để nhận thêm lượt sử dụng miễn phí.
+
+━━━━━━━━━━━━━━━━━━
+
+Bên dưới Embed có 2 Button.
+
+## 💸 Donate
+
+Khi nhấn:
+
+Gửi Embed Ephemeral:
+
+💎 Vui lòng truy cập <#1514934088870662184> để Donate và mở khóa ngay.
+
+## 🎁 Mời Bạn Bè
+
+Khi nhấn:
+
+Nếu người dùng chưa có Invite:
+
+- Bot tự động tạo một Discord Invite riêng.
+- Mỗi người chỉ có duy nhất *01 Invite*.
+- Invite không giới hạn thời gian.
+- Invite không giới hạn số lượt sử dụng.
+
+Sau đó gửi Embed Ephemeral:
+
+🎁 *Link mời của bạn*
+
+https://discord.gg/xxxxxxxx
+
+Tiến độ:
+
+*0 / 5 người*
+
+Mời đủ *05 người* để nhận thêm *50 lượt sử dụng*.
+
+## Theo dõi Invite
+
+Sử dụng:
+
+- inviteCreate
+- inviteDelete
+- guildMemberAdd
+- guildMemberRemove
+
+Khi thành viên tham gia bằng Invite:
+
++1 lượt.
+
+Khi thành viên rời server:
+
+-1 lượt.
+
+Quy tắc:
+
+- Không tính Bot.
+- Không cho số lượt âm.
+- Cache toàn bộ Invite khi bot khởi động để xác định chính xác người mời.
+
+## Thưởng
+
+Mỗi khi đạt đủ *05 người*:
+
+- Cộng *50 lượt sử dụng*.
+- Trừ *5* khỏi số Invite hiện tại để giữ phần dư.
+
+Ví dụ:
+
+- 5 người → +50 lượt.
+- 10 người → +100 lượt.
+- 15 người → +150 lượt.
+
+Sau khi cộng:
+
+Gửi Embed Ephemeral (riêng tư)
+
+🎉 *Chúc mừng!*
+
+Bạn đã mời thành công *05 người*.
+
+Bot đã cộng thêm *50 lượt sử dụng* hãy mời thêm bạn bè để cộng thêm nhiều lượt sử dụng hơn nhé
+
+## MongoDB
+
+Lưu toàn bộ dữ liệu:
+
+- guildId
+- userId
+- remainingUses
+- monthlyLimit
+- inviteCode
+- inviteChannelId
+- currentInvites
+- totalRewards
+
+## Yêu cầu kỹ thuật
+
+- Discord.js v14.
+- MongoDB (Mongoose).
+- Listener tách riêng.
+- Model MongoDB tách riêng.
+- Cache Invite khi bot khởi động.
+- Tất cả thông báo đều sử dụng *Embed Ephemeral (riêng tư)*.
+- Không thay đổi hoặc ảnh hưởng bất kỳ chức năng nào khác của bot.
+- Hệ thống này hoạt động hoàn toàn độc lập với các hệ thống giới hạn khác của bot.
+- Viết code hoàn chỉnh, có chú thích rõ ràng và sẵn sàng chạy ngay sau khi thêm vào dự án.
