@@ -227,15 +227,12 @@ function mapCustomEmojis(text, sourceMessage) {
     return match;
   });
 }
-function getEndTimeStr(startTimeStr) {
+function getEndTimeStr(startTimeStr, minutes = 5) {
   const [hh, mm] = startTimeStr.split(':').map(Number);
   if (isNaN(hh) || isNaN(mm)) return startTimeStr;
-  let endMm = mm + 5;
-  let endHh = hh;
-  if (endMm >= 60) {
-    endMm -= 60;
-    endHh = (endHh + 1) % 24;
-  }
+  const totalMins = hh * 60 + mm + minutes;
+  const endHh = Math.floor(totalMins / 60) % 24;
+  const endMm = totalMins % 60;
   return `${endHh.toString().padStart(2, '0')}:${endMm.toString().padStart(2, '0')}`;
 }
 function formatToVietnameseTime(timeStr) {
@@ -408,7 +405,12 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
   const cleanRawText = rawText.replace(/<@&?\d+>|<#\d+>/g, '').trim();
   const match = cleanRawText.match(/\[(\d{1,2}:\d{2})\]\s*(.*)$/s);
   if (!match) return null;
-  const startTimeStr = match[1];
+  let startTimeStr = match[1];
+  // Kênh báo-nông-cụ: dùng giờ thực của máy chủ làm thời điểm bắt đầu
+  if (targetChannelId === '1522313809123868813') {
+    const now = new Date();
+    startTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  }
   const itemsPart = match[2].trim();
   const rawItems = itemsPart.split(/\s*-\s*/);
   const formattedItems = [];
@@ -447,7 +449,9 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
     }
   }
   if (formattedItems.length === 0) return null;
-  const endTimeStr = getEndTimeStr(startTimeStr);
+  // Kênh báo-nông-cụ dùng 30 phút, các kênh khác dùng 5 phút
+  const endMins = targetChannelId === '1522313809123868813' ? 30 : 5;
+  const endTimeStr = getEndTimeStr(startTimeStr, endMins);
   const startTimeFormatted = formatToVietnameseTime(startTimeStr);
   const endTimeFormatted = formatToVietnameseTime(endTimeStr);
   let npcEmoji = '🏪';
@@ -1567,13 +1571,15 @@ async function forwardMessage(message, mapping) {
   try {
     const sentMessage = await targetChannel.send(payload);
     if (payload.content) {
+      // Kênh báo-nông-cụ thu hồi role sau 30 phút, các kênh khác sau 5 phút
+      const revokeDelay = mapping.targetChannelId === '1522313809123868813' ? 30 * 60 * 1000 : 5 * 60 * 1000;
       setTimeout(async () => {
         try {
           await sentMessage.edit({ content: null });
         } catch (editErr) {
           log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
         }
-      }, 5 * 60 * 1000);
+      }, revokeDelay);
     }
   } catch (err) {
     log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
