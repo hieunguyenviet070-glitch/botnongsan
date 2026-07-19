@@ -90,34 +90,9 @@ const lastSentMessages = new Map();
 // Map<guildId, Map<inviteCode, { uses, inviterId }>>  — for invite tracking
 const inviteCache = new Map();
 
-// ─── Role-based usage limits ──────────────────────────────────────────────────
-// Infinity = unlimited (skip all checks and deductions entirely)
-const ROLE_LIMITS = {
-  '1512799562149003275': 100,
-  '1514290379787079881': 200,
-  '1512099086990577675': Infinity,
-  '1512910004548669500': Infinity,
-  '1527648606725738638': Infinity,
-  '1512797959631147008': Infinity,
-  '1522069754909556837': Infinity,
-};
-const DEFAULT_LIMIT = 50;
-
-/**
- * Returns the monthly usage limit for a GuildMember.
- * Always returns the highest privilege the member holds.
- * Infinity means unlimited — no checks, no deductions.
- */
-function getUserLimit(member) {
-  let best = DEFAULT_LIMIT;
-  for (const [roleId, limit] of Object.entries(ROLE_LIMITS)) {
-    if (member.roles.cache.has(roleId)) {
-      if (limit === Infinity) return Infinity;
-      if (limit > best) best = limit;
-    }
-  }
-  return best;
-}
+// ─── Role-based usage limits (bypass roles managed in MongoDB) ───────────────
+const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('./utils/usageUtils.js');
+const { handleUsageCommand } = require('./listeners/usageCommands.js');
 // ─────────────────────────────────────────────────────────────────────────────
 function extractComponentText(components) {
   if (!components || !Array.isArray(components)) return '';
@@ -1325,6 +1300,51 @@ async function registerSlashCommands(guild) {
       {
         name: 'setup',
         description: 'Mở menu cấu hình nhận thông báo Play Together'
+      },
+      {
+        name: 'usage',
+        description: 'Quản lý lượt sử dụng tùy chỉnh thông báo (Admin)',
+        options: [
+          {
+            type: 1, name: 'check', description: 'Kiểm tra lượt sử dụng của người dùng',
+            options: [{ type: 6, name: 'user', description: 'Người dùng cần kiểm tra', required: true }]
+          },
+          {
+            type: 1, name: 'add', description: 'Cộng thêm lượt sử dụng',
+            options: [
+              { type: 6, name: 'user', description: 'Người dùng', required: true },
+              { type: 4, name: 'amount', description: 'Số lượt cần cộng', required: true, minValue: 1 }
+            ]
+          },
+          {
+            type: 1, name: 'remove', description: 'Trừ lượt sử dụng',
+            options: [
+              { type: 6, name: 'user', description: 'Người dùng', required: true },
+              { type: 4, name: 'amount', description: 'Số lượt cần trừ', required: true, minValue: 1 }
+            ]
+          },
+          {
+            type: 1, name: 'set', description: 'Đặt số lượt còn lại',
+            options: [
+              { type: 6, name: 'user', description: 'Người dùng', required: true },
+              { type: 4, name: 'amount', description: 'Số lượt', required: true, minValue: 0 }
+            ]
+          },
+          {
+            type: 2, name: 'bypass', description: 'Quản lý Role không giới hạn',
+            options: [
+              {
+                type: 1, name: 'add', description: 'Thêm Role vào danh sách không giới hạn',
+                options: [{ type: 8, name: 'role', description: 'Role cần thêm', required: true }]
+              },
+              {
+                type: 1, name: 'remove', description: 'Xóa Role khỏi danh sách không giới hạn',
+                options: [{ type: 8, name: 'role', description: 'Role cần xóa', required: true }]
+              },
+              { type: 1, name: 'list', description: 'Xem danh sách Role không giới hạn' }
+            ]
+          }
+        ]
       }
     ];
     if (guild.commands) {
@@ -1368,7 +1388,9 @@ botClient.on('interactionCreate', async (interaction) => {
       return;
     }
     if (interaction.isCommand()) {
-      if (interaction.commandName === 'setup') {
+      if (interaction.commandName === 'usage') {
+        await handleUsageCommand(interaction, guild, member);
+      } else if (interaction.commandName === 'setup') {
         if (setup.ADMIN_IDS && Array.isArray(setup.ADMIN_IDS)) {
           const validAdminIds = setup.ADMIN_IDS.filter(id => id && id.trim() !== '' && !id.includes('ĐIỀN_ID_'));
           if (validAdminIds.length > 0 && !validAdminIds.includes(interaction.user.id)) {
@@ -1434,7 +1456,7 @@ botClient.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
         // --- Kiểm tra giới hạn sử dụng hàng tháng ---
-        const userLimit = getUserLimit(member);
+        const userLimit = await getUserLimit(member);
         // Unlimited roles: bỏ qua hoàn toàn, mở panel ngay
         if (userLimit !== Infinity) {
           let usageDoc = null;
@@ -1754,7 +1776,7 @@ async function deductUsageForRoles(guild, roleIds) {
   if (affectedMembers.size === 0) return;
   for (const [userId, guildMember] of affectedMembers) {
     try {
-      const userLimit = getUserLimit(guildMember);
+      const userLimit = await getUserLimit(guildMember);
       // Unlimited roles: bỏ qua hoàn toàn
       if (userLimit === Infinity) continue;
       // Upsert với đúng limit của user
