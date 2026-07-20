@@ -94,6 +94,7 @@ const inviteCache = new Map();
 const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('./utils/usageUtils.js');
 const { revokeNotificationRoles } = require('./utils/roleRevoke.js');
 const { handleUsageCommand } = require('./listeners/usageCommands.js');
+const { handleReminderEmbed } = require('./listeners/reminderEmbed.js');
 const inviteSystem = require('./listeners/inviteSystem.js');
 const UserInvite = require('./models/UserInvite.js');
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1812,6 +1813,8 @@ async function deductUsageForRoles(guild, roleIds) {
   }
 }
 // ─── Invite tracking & usage deduction on member join/leave ─────────────────
+
+botClient.on('messageCreate', (message) => handleReminderEmbed(message).catch(() => {}));
 
 botClient.on('inviteCreate', (invite) => inviteSystem.handleInviteCreate(invite));
 botClient.on('inviteDelete', (invite) => inviteSystem.handleInviteDelete(invite));
