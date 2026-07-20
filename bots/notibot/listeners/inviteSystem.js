@@ -259,7 +259,7 @@ async function handleInviteButton(interaction, guild) {
         `${_buildProgressBar(progressVal, 5)} **${progressVal}/5**`,
         `👤 **Đã mời:** ${doc.joinedCount ?? 0} người`,
         '',
-        '🎁 Đủ **5 người ở lại** server sẽ nhận **+50 lượt** dùng tính năng thông báo.',
+        '🎁 Đủ **5 người ở lại** server sẽ nhận **+500 lượt** dùng tính năng thông báo.',
       ].join('\n'),
       footer: { text: 'Nếu người được mời rời server, tiến trình sẽ bị trừ lại.' },
     };
@@ -281,7 +281,7 @@ async function handleInviteButton(interaction, guild) {
 
 /**
  * Kiểm tra và cộng thưởng mốc 5 người active.
- * Mỗi lần activeCount vượt qua bội số của 5 → +50 lượt, rewardProgress++.
+ * Mỗi lần activeCount vượt qua bội số của 5 → +500 lượt, rewardProgress++.
  * Dùng $set để tránh thưởng trùng khi có race condition.
  */
 async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
@@ -289,7 +289,7 @@ async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
   if (milestonesEarned <= (inviteDoc.rewardProgress ?? 0)) return;
 
   const newMilestones = milestonesEarned - inviteDoc.rewardProgress;
-  const bonus         = newMilestones * 50;
+  const bonus         = newMilestones * 500;
 
   // Cập nhật rewardProgress trước để tránh thưởng trùng
   await UserInvite.updateOne(

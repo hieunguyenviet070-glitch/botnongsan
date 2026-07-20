@@ -1503,7 +1503,7 @@ botClient.on('interactionCreate', async (interaction) => {
                 '',
                 '**Cách mở khóa thêm lượt:**',
                 '• 💝 **Donate** — nhận thêm lượt ngay lập tức',
-                '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+50 lượt**',
+                '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+500 lượt**',
                 '',
                 '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
               ].join('\n'),
