@@ -250,18 +250,18 @@ async function handleInviteButton(interaction, guild) {
 
     const embed = {
       color: 0x5865f2,
-      title: '👥 Mời bạn bè để nhận thêm lượt',
+      title: '👥 Mời bạn bè nhận thêm lượt thông báo',
       description: [
-        'Sao chép link dưới đây và chia sẻ với bạn bè:',
+        'Sao chép liên kết dưới đây và chia sẻ với bạn bè:',
         '',
         `\`https://discord.gg/${discordInvite.code}\``,
         '',
-        `${_buildProgressBar(progressVal, 5)} **${progressVal}/5**`,
-        `👤 **Đã mời:** ${doc.joinedCount ?? 0} người`,
+        `Tiến độ: ${progressVal}/5`,
+        `👤 Đã mời thành công: ${doc.joinedCount ?? 0} người`,
         '',
-        '🎁 Đủ **5 người ở lại** server sẽ nhận **+500 lượt** dùng tính năng thông báo.',
+        '🎁 Mời đủ 5 người bạn sẽ nhận +500 lượt thông báo.',
       ].join('\n'),
-      footer: { text: 'Nếu người được mời rời server, tiến trình sẽ bị trừ lại.' },
+      footer: { text: 'Nếu người được mời rời server, tiến độ sẽ bị trừ lại.' },
     };
 
     return interaction.editReply({ embeds: [embed] });
