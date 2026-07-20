@@ -87,7 +87,7 @@ const botClient = new BotClient({
 });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const lastSentMessages = new Map();
-// Map<guildId, Map<inviteCode, { uses, inviterId }>>  — for invite tracking
+// Map<guildId, Map<inviteCode, uses:number>>  — for invite tracking
 const inviteCache = new Map();
 
 // ─── Role-based usage limits (bypass roles managed in MongoDB) ───────────────
@@ -1642,7 +1642,7 @@ botClient.on('ready', async () => {
     try {
       const invites = await g.invites.fetch();
       const gMap = new Map();
-      invites.forEach(inv => gMap.set(inv.code, { uses: inv.uses, inviterId: inv.inviter ? inv.inviter.id : null }));
+      invites.forEach(inv => gMap.set(inv.code, inv.uses ?? 0));
       inviteCache.set(g.id, gMap);
       log.info(`Đã cache ${gMap.size} invite(s) cho server: ${g.name}`);
     } catch (err) {

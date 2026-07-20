@@ -1,8 +1,11 @@
 /**
- * inviteSystem.js — Hệ thống "Mời bạn bè" hoàn chỉnh
+ * inviteSystem.js — Hệ thống "Mời bạn bè"
  *
- * Export:
- *   init(inviteCache, log, botClient)  — gọi 1 lần sau khi bot ready
+ * Cache format: Map<guildId, Map<inviteCode, uses: number>>
+ * Chủ invite được xác định bằng cách tra DB theo inviteCode — KHÔNG dùng invite.inviter.
+ *
+ * Exports:
+ *   init(inviteCache, log, botClient)
  *   handleInviteCreate(invite)
  *   handleInviteDelete(invite)
  *   handleGuildMemberAdd(member)
@@ -10,22 +13,22 @@
  *   handleInviteButton(interaction, guild)
  */
 
-const UsageLimit  = require('../models/UsageLimit.js');
-const JoinRecord  = require('../models/JoinRecord.js');
-const UserInvite  = require('../models/UserInvite.js');
+'use strict';
 
-// ─── Module-level state (injected via init) ───────────────────────────────────
+const UsageLimit = require('../models/UsageLimit.js');
+const JoinRecord = require('../models/JoinRecord.js');
+const UserInvite = require('../models/UserInvite.js');
 
-/** @type {Map<string, Map<string, { uses: number, inviterId: string|null }>>} */
-let _cache      = null;
-let _log        = null;
-let _botClient  = null;
+// ─── Module state ─────────────────────────────────────────────────────────────
+
+/** Map<guildId, Map<code, uses>> — chia sẻ tham chiếu với index.js */
+let _cache     = null;
+let _log       = null;
+let _botClient = null;
 
 /**
- * Khởi tạo module. Phải gọi sau khi bot ready và inviteCache đã được populate.
- * @param {Map}    inviteCache  - Map<guildId, Map<code, {uses, inviterId}>> dùng chung với index.js
- * @param {object} log          - logger object ({ info, warn, error, success })
- * @param {Client} botClient    - discord.js BotClient instance
+ * Phải gọi 1 lần sau khi bot ready và cache đã được populate.
+ * inviteCache phải là Map<guildId, Map<code, uses:number>>.
  */
 function init(inviteCache, log, botClient) {
   _cache     = inviteCache;
@@ -35,131 +38,102 @@ function init(inviteCache, log, botClient) {
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
-/** Cập nhật cache khi có invite mới được tạo */
+/** inviteCreate: thêm code mới vào cache với uses hiện tại */
 function handleInviteCreate(invite) {
   const guildId = invite.guild?.id;
   if (!guildId || !_cache) return;
-  const gMap = _cache.get(guildId) || new Map();
-  gMap.set(invite.code, { uses: invite.uses || 0, inviterId: invite.inviter?.id ?? null });
+  const gMap = _cache.get(guildId) ?? new Map();
+  gMap.set(invite.code, invite.uses ?? 0);
   _cache.set(guildId, gMap);
+  _log?.info(`[Invite] Cache +1 invite ${invite.code} (guild: ${guildId})`);
 }
 
-/** Xóa invite khỏi cache khi bị xóa */
+/** inviteDelete: xóa code khỏi cache */
 function handleInviteDelete(invite) {
   const guildId = invite.guild?.id;
   if (!guildId || !_cache) return;
   const gMap = _cache.get(guildId);
   if (gMap) gMap.delete(invite.code);
+  _log?.info(`[Invite] Cache -1 invite ${invite.code} (guild: ${guildId})`);
 }
 
 // ─── guildMemberAdd ───────────────────────────────────────────────────────────
 
 /**
  * Khi có người vào server:
- * 1. So sánh cache trước/sau để tìm invite được dùng
- * 2. Cập nhật joinedCount, activeCount của chủ invite
- * 3. Thưởng +50 lượt cho mỗi mốc 5 activeCount (không thưởng trùng)
+ *  1. Fetch toàn bộ invite hiện tại.
+ *  2. So sánh với cache cũ → tìm code có uses tăng.
+ *  3. Tra UserInvite theo inviteCode để lấy userId của chủ invite.
+ *  4. Cập nhật joinedCount, activeCount, thưởng mốc 5 người.
+ *  5. Lưu JoinRecord (memberId → inviterId) để xử lý khi rời.
+ *  6. Cập nhật cache mới.
  */
 async function handleGuildMemberAdd(member) {
   const g = member.guild;
   try {
-    const cachedInvites = _cache.get(g.id) || new Map();
+    // ── 1. Snapshot cache cũ ────────────────────────────────────────────────
+    const cachedUses = _cache.get(g.id) ?? new Map(); // Map<code, uses>
 
-    // Fetch invite list mới nhất từ Discord
+    // ── 2. Fetch invite mới nhất ─────────────────────────────────────────────
     let freshInvites;
     try {
       freshInvites = await g.invites.fetch();
     } catch (err) {
-      _log.warn(`[Invite] Không thể fetch invite cho ${g.name}: ${err.message}`);
+      _log.warn(`[Invite] Không thể fetch invite guild ${g.name}: ${err.message}`);
       return;
     }
 
-    // Tìm invite có số uses tăng so với cache
-    let usedInvite = null;
+    // ── 3. Tìm code có uses tăng ─────────────────────────────────────────────
+    let usedCode = null;
     freshInvites.forEach(inv => {
-      const cached = cachedInvites.get(inv.code);
-      if ((cached && inv.uses > cached.uses) || (!cached && inv.uses > 0)) {
-        usedInvite = inv;
-      }
+      const before = cachedUses.get(inv.code) ?? 0;
+      if (inv.uses > before) usedCode = inv.code;
     });
 
-    // Refresh toàn bộ cache với dữ liệu mới nhất
+    // ── 4. Cập nhật cache NGAY — trước mọi await khác ────────────────────────
     const newMap = new Map();
-    freshInvites.forEach(inv => newMap.set(inv.code, {
-      uses: inv.uses,
-      inviterId: inv.inviter?.id ?? null,
-    }));
+    freshInvites.forEach(inv => newMap.set(inv.code, inv.uses));
     _cache.set(g.id, newMap);
 
-    if (!usedInvite || !usedInvite.inviter) return;
+    if (!usedCode) {
+      _log.warn(`[Invite] Không xác định được invite khi ${member.user.tag} vào server.`);
+      return;
+    }
 
-    const inviterId   = usedInvite.inviter.id;
-    const inviteCode  = usedInvite.code;
-    const inviteURL   = `https://discord.gg/${inviteCode}`;
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    // ── 5. Tra DB để lấy chủ invite (KHÔNG dùng invite.inviter) ─────────────
+    const inviteOwner = await UserInvite.findOne({ guildId: g.id, inviteCode: usedCode });
+    if (!inviteOwner) {
+      // Invite này không được tạo qua hệ thống bot — bỏ qua
+      _log.info(`[Invite] Code ${usedCode} không có trong DB — bỏ qua.`);
+      return;
+    }
+    const inviterId = inviteOwner.userId;
 
-    // Lưu JoinRecord để có thể trừ lại khi người này rời
+    // ── 6. Lưu JoinRecord để xử lý khi member rời ───────────────────────────
     try {
-      await JoinRecord.create({ guildId: g.id, userId: member.id, inviterId, inviteCode });
+      await JoinRecord.create({
+        guildId:    g.id,
+        userId:     member.id,
+        inviterId,
+        inviteCode: usedCode,
+      });
     } catch (_) { /* duplicate — bỏ qua */ }
 
-    // Tăng joinedCount + activeCount, sync inviteCode/URL, lấy doc mới
+    // ── 7. Tăng joinedCount + activeCount ────────────────────────────────────
     const inviteDoc = await UserInvite.findOneAndUpdate(
       { guildId: g.id, userId: inviterId },
-      {
-        $inc: { joinedCount: 1, activeCount: 1 },
-        $set: { inviteCode, inviteURL },
-        $setOnInsert: { uses: 0, rewardProgress: 0 },
-      },
-      { upsert: true, new: true },
+      { $inc: { joinedCount: 1, activeCount: 1 } },
+      { new: true },
     );
 
     _log.info(
-      `[Invite] ${member.user.tag} vào server qua invite của ` +
-      `${usedInvite.inviter.tag} — active: ${inviteDoc.activeCount}`,
+      `[Invite] ${member.user.tag} vào server qua code ${usedCode}` +
+      ` (chủ: ${inviterId}) — active: ${inviteDoc.activeCount}`,
     );
 
-    // ── Kiểm tra thưởng mốc 5 người ──────────────────────────────────────────
-    const milestonesEarned = Math.floor(inviteDoc.activeCount / 5);
-    if (milestonesEarned > inviteDoc.rewardProgress) {
-      const newMilestones = milestonesEarned - inviteDoc.rewardProgress;
-      const bonus         = newMilestones * 50;
+    // ── 8. Kiểm tra và cộng thưởng mốc 5 người ──────────────────────────────
+    await _checkAndAwardMilestone(g.id, inviterId, inviteDoc);
 
-      // Cập nhật rewardProgress atomically để tránh thưởng trùng
-      await UserInvite.updateOne(
-        { guildId: g.id, userId: inviterId },
-        { $set: { rewardProgress: milestonesEarned } },
-      );
-
-      // Cộng lượt vào UsageLimit
-      await UsageLimit.findOneAndUpdate(
-        { guildId: g.id, userId: inviterId },
-        {
-          $inc: { remainingUses: bonus },
-          $setOnInsert: {
-            monthlyLimit: 50,
-            lastResetMonth: currentMonth,
-            pendingInviteRewards: 0,
-            totalInvites: 0,
-          },
-        },
-        { upsert: true },
-      );
-
-      _log.success(
-        `[Invite] +${bonus} lượt cho ${inviterId} — đạt mốc ` +
-        `${milestonesEarned * 5} người active`,
-      );
-
-      // Gửi DM thông báo cho chủ invite
-      try {
-        const inviterUser = await _botClient.users.fetch(inviterId);
-        await inviterUser.send(
-          `🎉 Chúc mừng! Bạn vừa đạt **${inviteDoc.activeCount} người** đang ở lại server!\n` +
-          `**+${bonus} lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`,
-        );
-      } catch (_) { /* DM bị tắt — bỏ qua */ }
-    }
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberAdd:', err.message);
   }
@@ -169,15 +143,15 @@ async function handleGuildMemberAdd(member) {
 
 /**
  * Khi có người rời server:
- * 1. Tìm JoinRecord để biết họ vào qua invite của ai
- * 2. Giảm activeCount của chủ invite
- * (rewardProgress KHÔNG giảm — mốc thưởng đã cộng không bị thu hồi)
+ *  1. Tra JoinRecord để lấy inviterId.
+ *  2. Giảm activeCount của chủ invite (min 0).
+ *  (rewardProgress không giảm — mốc đã thưởng không thu hồi)
  */
 async function handleGuildMemberRemove(member) {
   const g = member.guild;
   try {
     const joinRecord = await JoinRecord.findOneAndDelete({ guildId: g.id, userId: member.id });
-    if (!joinRecord || !joinRecord.inviterId) return;
+    if (!joinRecord?.inviterId) return;
 
     const updated = await UserInvite.findOneAndUpdate(
       { guildId: g.id, userId: joinRecord.inviterId },
@@ -185,7 +159,7 @@ async function handleGuildMemberRemove(member) {
       { new: true },
     );
 
-    // Đảm bảo activeCount không âm
+    // Đảm bảo không âm
     if (updated && updated.activeCount < 0) {
       await UserInvite.updateOne(
         { guildId: g.id, userId: joinRecord.inviterId },
@@ -193,9 +167,10 @@ async function handleGuildMemberRemove(member) {
       );
     }
 
+    const finalCount = updated ? Math.max(0, updated.activeCount) : 0;
     _log.info(
       `[Invite] ${member.user.tag} rời server — ` +
-      `active của ${joinRecord.inviterId}: ${Math.max(0, updated?.activeCount ?? 0)}`,
+      `active của ${joinRecord.inviterId}: ${finalCount}`,
     );
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberRemove:', err.message);
@@ -205,22 +180,20 @@ async function handleGuildMemberRemove(member) {
 // ─── Button handler ───────────────────────────────────────────────────────────
 
 /**
- * Xử lý nút "👥 Mời bạn bè" (customId: 'setup_limit_invite')
- * Luôn dùng deferReply ephemeral → editReply để tránh timeout.
+ * Xử lý nút "👥 Mời bạn bè" (customId: 'setup_limit_invite').
+ * deferReply (ephemeral) → xử lý async → editReply.
  */
 async function handleInviteButton(interaction, guild) {
   await interaction.deferReply({ ephemeral: true });
-
   const userId = interaction.user.id;
 
   try {
     let doc           = await UserInvite.findOne({ guildId: guild.id, userId });
     let discordInvite = null;
 
-    // ── Thử lấy lại invite cũ từ Discord ─────────────────────────────────────
+    // ── Thử tìm lại invite cũ còn tồn tại trên Discord ──────────────────────
     if (doc?.inviteCode) {
       try {
-        // guild.invites.fetch() trả về Collection; lọc theo code
         const allInvites = await guild.invites.fetch();
         discordInvite = allInvites.get(doc.inviteCode) ?? null;
       } catch (_) {
@@ -228,26 +201,26 @@ async function handleInviteButton(interaction, guild) {
       }
     }
 
-    // ── Tạo invite mới nếu chưa có hoặc đã bị xóa ────────────────────────────
+    // ── Tạo invite mới nếu chưa có hoặc đã bị xóa ───────────────────────────
     if (!discordInvite) {
       const channel = _findInviteChannel(guild);
       if (!channel) {
         return interaction.editReply({
           embeds: [{
             color: 0xe74c3c,
-            description: '❌ Bot không có quyền tạo link mời trên server này.\nVui lòng liên hệ Admin để cấp quyền **Tạo liên kết mời**.',
+            description: '❌ Bot không có quyền tạo link mời.\nVui lòng liên hệ Admin để cấp quyền **Tạo liên kết mời**.',
           }],
         });
       }
 
       discordInvite = await guild.invites.create(channel, {
-        maxAge:  0,   // không hết hạn
-        maxUses: 0,   // không giới hạn lượt dùng
+        maxAge:  0,    // không hết hạn
+        maxUses: 0,    // không giới hạn lượt dùng
         unique:  true,
         reason:  `Invite cá nhân cho ${interaction.user.tag}`,
       });
 
-      // Lưu/cập nhật vào DB
+      // Lưu/cập nhật DB
       doc = await UserInvite.findOneAndUpdate(
         { guildId: guild.id, userId },
         {
@@ -260,22 +233,21 @@ async function handleInviteButton(interaction, guild) {
         { upsert: true, new: true },
       );
 
-      // Cập nhật cache
-      if (_cache && guild.id) {
-        const gMap = _cache.get(guild.id) || new Map();
-        gMap.set(discordInvite.code, { uses: 0, inviterId: userId });
+      // Cập nhật cache để guildMemberAdd có thể so sánh đúng
+      if (_cache) {
+        const gMap = _cache.get(guild.id) ?? new Map();
+        gMap.set(discordInvite.code, discordInvite.uses ?? 0);
         _cache.set(guild.id, gMap);
       }
+
+      _log.info(`[Invite] Tạo invite mới ${discordInvite.code} cho user ${userId}`);
     }
 
-    // ── Tính tiến trình thưởng ────────────────────────────────────────────────
-    const activeCount     = Math.max(0, doc.activeCount);
-    const rewardProgress  = doc.rewardProgress ?? 0;
-    // progress = active hiện tại trừ đi các mốc đã thưởng
-    const progressVal     = Math.max(0, activeCount - rewardProgress * 5);
-    const progressBar     = buildProgressBar(progressVal, 5);
+    // ── Tính tiến trình ───────────────────────────────────────────────────────
+    const activeCount    = Math.max(0, doc.activeCount ?? 0);
+    const rewardProgress = doc.rewardProgress ?? 0;
+    const progressVal    = Math.max(0, activeCount - rewardProgress * 5);
 
-    // ── Tạo embed ─────────────────────────────────────────────────────────────
     const embed = {
       color: 0x5865f2,
       title: '👥 Mời bạn bè để nhận thêm lượt',
@@ -284,8 +256,8 @@ async function handleInviteButton(interaction, guild) {
         '',
         `\`https://discord.gg/${discordInvite.code}\``,
         '',
-        `${progressBar} **${progressVal}/5**`,
-        `👤 **Đã mời:** ${doc.joinedCount} người`,
+        `${_buildProgressBar(progressVal, 5)} **${progressVal}/5**`,
+        `👤 **Đã mời:** ${doc.joinedCount ?? 0} người`,
         '',
         '🎁 Đủ **5 người ở lại** server sẽ nhận **+50 lượt** dùng tính năng thông báo.',
       ].join('\n'),
@@ -293,6 +265,7 @@ async function handleInviteButton(interaction, guild) {
     };
 
     return interaction.editReply({ embeds: [embed] });
+
   } catch (err) {
     _log.error('[Invite] Lỗi handleInviteButton:', err.message);
     return interaction.editReply({
@@ -307,35 +280,73 @@ async function handleInviteButton(interaction, guild) {
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 /**
- * Tìm kênh text đầu tiên mà bot có quyền CREATE_INSTANT_INVITE.
- * Ưu tiên systemChannel của guild.
+ * Kiểm tra và cộng thưởng mốc 5 người active.
+ * Mỗi lần activeCount vượt qua bội số của 5 → +50 lượt, rewardProgress++.
+ * Dùng $set để tránh thưởng trùng khi có race condition.
  */
+async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
+  const milestonesEarned = Math.floor(inviteDoc.activeCount / 5);
+  if (milestonesEarned <= (inviteDoc.rewardProgress ?? 0)) return;
+
+  const newMilestones = milestonesEarned - inviteDoc.rewardProgress;
+  const bonus         = newMilestones * 50;
+
+  // Cập nhật rewardProgress trước để tránh thưởng trùng
+  await UserInvite.updateOne(
+    { guildId, userId: inviterId },
+    { $set: { rewardProgress: milestonesEarned } },
+  );
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  await UsageLimit.findOneAndUpdate(
+    { guildId, userId: inviterId },
+    {
+      $inc: { remainingUses: bonus },
+      $setOnInsert: {
+        monthlyLimit:         50,
+        lastResetMonth:       currentMonth,
+        pendingInviteRewards: 0,
+        totalInvites:         0,
+      },
+    },
+    { upsert: true },
+  );
+
+  _log.success(
+    `[Invite] +${bonus} lượt cho ${inviterId} — mốc ${milestonesEarned * 5} active`,
+  );
+
+  // DM thông báo
+  try {
+    const user = await _botClient.users.fetch(inviterId);
+    await user.send(
+      `🎉 Bạn vừa đạt mốc **${inviteDoc.activeCount} người** đang ở lại server!\n` +
+      `**+${bonus} lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`,
+    );
+  } catch (_) { /* DM bị tắt */ }
+}
+
+/** Tìm kênh text mà bot có quyền CREATE_INSTANT_INVITE. Ưu tiên systemChannel. */
 function _findInviteChannel(guild) {
-  const me = guild.me;
+  const me = guild.members.me;
   if (!me) return null;
 
-  // Ưu tiên system channel
   if (guild.systemChannel) {
-    const perms = guild.systemChannel.permissionsFor(me);
-    if (perms && perms.has('CREATE_INSTANT_INVITE')) return guild.systemChannel;
+    const p = guild.systemChannel.permissionsFor(me);
+    if (p?.has('CREATE_INSTANT_INVITE')) return guild.systemChannel;
   }
 
-  // Fallback: kênh text bất kỳ có quyền
   return guild.channels.cache.find(c => {
     if (c.type !== 'GUILD_TEXT') return false;
-    const perms = c.permissionsFor(me);
-    return perms && perms.has('CREATE_INSTANT_INVITE') && perms.has('VIEW_CHANNEL');
+    const p = c.permissionsFor(me);
+    return p?.has('CREATE_INSTANT_INVITE') && p?.has('VIEW_CHANNEL');
   }) ?? null;
 }
 
-/**
- * Tạo thanh tiến trình dạng emoji.
- * Ví dụ: progressBar(3, 5) → "🟩🟩🟩⬜⬜"
- */
-function buildProgressBar(current, total) {
-  const filled = Math.min(current, total);
-  const empty  = total - filled;
-  return '🟩'.repeat(filled) + '⬜'.repeat(empty);
+/** Thanh tiến trình emoji. buildProgressBar(3,5) → "🟩🟩🟩⬜⬜" */
+function _buildProgressBar(current, total) {
+  const filled = Math.min(Math.max(0, current), total);
+  return '🟩'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
