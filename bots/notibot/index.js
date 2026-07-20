@@ -92,6 +92,7 @@ const inviteCache = new Map();
 
 // ─── Role-based usage limits (bypass roles managed in MongoDB) ───────────────
 const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('./utils/usageUtils.js');
+const { revokeNotificationRoles } = require('./utils/roleRevoke.js');
 const { handleUsageCommand } = require('./listeners/usageCommands.js');
 const inviteSystem = require('./listeners/inviteSystem.js');
 const UserInvite = require('./models/UserInvite.js');
@@ -1789,7 +1790,21 @@ async function deductUsageForRoles(guild, roleIds) {
         );
       }
       if (doc.remainingUses > 0) {
-        await UsageLimit.updateOne({ guildId: guild.id, userId }, { $inc: { remainingUses: -1 } });
+        const updated = await UsageLimit.findOneAndUpdate(
+          { guildId: guild.id, userId },
+          { $inc: { remainingUses: -1 } },
+          { returnDocument: 'after' }
+        );
+        // Khi về 0: đảm bảo không âm, gỡ role và gửi DM
+        if (updated && updated.remainingUses <= 0) {
+          if (updated.remainingUses < 0) {
+            await UsageLimit.updateOne({ guildId: guild.id, userId }, { $set: { remainingUses: 0 } });
+          }
+          log.info(`Người dùng ${userId} hết lượt — đang gỡ role thông báo...`);
+          revokeNotificationRoles(guildMember).catch(err =>
+            log.error(`Lỗi khi gỡ role thông báo cho ${userId}:`, err.message)
+          );
+        }
       }
     } catch (err) {
       log.error(`Lỗi khi trừ lượt sử dụng cho ${userId}:`, err.message);

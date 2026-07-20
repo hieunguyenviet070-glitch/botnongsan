@@ -7,6 +7,7 @@
 const UsageLimit = require('../models/UsageLimit.js');
 const BypassRole = require('../models/BypassRole.js');
 const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('../utils/usageUtils.js');
+const { revokeNotificationRoles } = require('../utils/roleRevoke.js');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,25 @@ async function handleRemove(interaction, guild) {
       },
       { upsert: true, returnDocument: 'after' }
     );
+
+    // Gỡ role nếu hết lượt
+    if (newVal <= 0) {
+      try {
+        const targetMember = await guild.members.fetch(targetUser.id);
+        const revokedCount = await revokeNotificationRoles(targetMember);
+        const revokeNote = revokedCount > 0
+          ? `\n📌 Đã tự động thu hồi **${revokedCount} role** thông báo và gửi DM cho người dùng.`
+          : '\n📌 Người dùng không có role thông báo nào để gỡ.';
+        return interaction.reply(ephemeral(successEmbed(
+          `✅ Đã trừ **${amount} lượt** sử dụng của <@${targetUser.id}>. (Còn lại: 0)${revokeNote}`
+        )));
+      } catch (_) {
+        return interaction.reply(ephemeral(successEmbed(
+          `✅ Đã trừ **${amount} lượt** sử dụng của <@${targetUser.id}>. (Còn lại: 0)\n⚠️ Không thể gỡ role: không tìm thấy thành viên trên server.`
+        )));
+      }
+    }
+
     return interaction.reply(ephemeral(successEmbed(`✅ Đã trừ **${amount} lượt** sử dụng của <@${targetUser.id}>. (Còn lại: ${newVal})`)));
   } catch (err) {
     return interaction.reply(ephemeral(errorEmbed(`❌ Lỗi MongoDB: ${err.message}`)));
