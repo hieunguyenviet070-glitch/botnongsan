@@ -1502,7 +1502,7 @@ botClient.on('interactionCreate', async (interaction) => {
                 `Bạn đã dùng hết **${usageDoc.monthlyLimit} lượt** tùy chỉnh thông báo trong tháng này.`,
                 '',
                 '**Cách mở khóa thêm lượt:**',
-                '• 💝 **Donate** — nhận thêm lượt ngay lập tức',
+                '• 💸 **Donate** — nhận thêm lượt ngay lập tức',
                 '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+500 lượt**',
                 '',
                 '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
