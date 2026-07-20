@@ -1494,13 +1494,13 @@ botClient.on('interactionCreate', async (interaction) => {
               color: 0xe74c3c,
               title: '❌ Đã hết lượt tùy chỉnh tháng này',
               description: [
-                `Bạn đã dùng hết **${usageDoc.monthlyLimit} lượt** tùy chỉnh thông báo trong tháng này.`,
+                `Bạn đã dùng hết ${usageDoc.monthlyLimit} lượt thông báo trong tháng này.`,
                 '',
-                '**Cách mở khóa thêm lượt:**',
-                '• 💸 **Donate** — nhận thêm lượt ngay lập tức',
-                '• 👥 **Mời bạn bè** — mỗi 5 người ở lại = **+500 lượt**',
+                'Cách mở khóa thêm lượt:',
+                '• 💸 Donate — nhận thêm lượt ngay lập tức',
+                '• 👥 Mời bạn bè — mời 5 người bạn = +500 lượt',
                 '',
-                '🔄 Lượt tùy chỉnh sẽ được làm mới vào đầu tháng sau.',
+                '🔄 Lượt thông báo sẽ được làm mới vào đầu tháng sau.',
               ].join('\n'),
               footer: { text: `Lượt còn lại: 0 / ${usageDoc.monthlyLimit}` }
             };
