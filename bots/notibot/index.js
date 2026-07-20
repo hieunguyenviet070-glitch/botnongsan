@@ -1289,12 +1289,7 @@ function buildSetupComponents(member) {
         .setCustomId('setup_refresh')
         .setLabel('Refresh')
         .setEmoji('🔄')
-        .setStyle('SECONDARY'),
-      new MessageButton()
-        .setCustomId('setup_all_notifs')
-        .setLabel('Theo dõi tất cả thông báo')
-        .setEmoji('🔔')
-        .setStyle('PRIMARY')
+        .setStyle('SECONDARY')
     )
   ];
 }
