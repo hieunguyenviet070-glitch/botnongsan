@@ -389,7 +389,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
     return {
       title: embedTitle,
       description: embedDesc,
-      color: originalEmbed.color || 0x3498db
+      color: 0xFFD700
     };
   }
 
@@ -408,7 +408,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
     }
     return {
       description: description,
-      color: originalEmbed.color || 0x3498db
+      color: 0xFFD700
     };
   }
   return null;
