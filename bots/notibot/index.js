@@ -377,7 +377,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
         }
       }
       embedTitle = `**${emoji} ${matchedRule.weatherName} đang xuất hiện**`;
-      embedDesc = `Nông sản biến thể: ${matchedRule.variantName}`;
+      embedDesc = `-# Nông sản biến thể: ${matchedRule.variantName}`;
       embedDesc += `\n\n**Thời gian︱${startTime} ~ ${getEndTimeStr(startTime)}**`;
     } else {
       let cleanTitle = titleText || combined.split('\n')[0] || 'Thông báo thời tiết';
@@ -401,7 +401,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
         emoji = val;
       }
     }
-    let description = `${emoji} ${matchedRule.weatherName} đang xuất hiện\nNông sản biến thể: ${matchedRule.variantName}`;
+    let description = `${emoji} ${matchedRule.weatherName} đang xuất hiện\n-# Nông sản biến thể: ${matchedRule.variantName}`;
     const timeMatch = combined.match(/(Thời gian|Time):\s*([^\n]+)/i);
     if (timeMatch) {
       description += `\n${timeMatch[0]}`;
