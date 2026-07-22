@@ -1694,15 +1694,15 @@ async function forwardMessage(message, mapping) {
 
   if (mapping.targetChannelId === '1522391343534440478' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => {
-      if (emb.title) {
-        const titleText = emb.title;
-        const currentDesc = emb.description || '';
+      let newEmb = { ...emb, color: 0xED4245 };
+      if (newEmb.title) {
+        const titleText = newEmb.title;
+        const currentDesc = newEmb.description || '';
         const newDesc = `### ${titleText}\n${currentDesc}`;
-        const newEmb = { ...emb, description: newDesc };
+        newEmb = { ...newEmb, description: newDesc };
         delete newEmb.title;
-        return newEmb;
       }
-      return emb;
+      return newEmb;
     });
   }
 
