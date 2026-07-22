@@ -376,13 +376,13 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
           emoji = val;
         }
       }
-      embedTitle = `${emoji} ${matchedRule.weatherName} đang xuất hiện`;
+      embedTitle = `**${emoji} ${matchedRule.weatherName} đang xuất hiện**`;
       embedDesc = `Nông sản biến thể: ${matchedRule.variantName}`;
       embedDesc += `\n\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
     } else {
       let cleanTitle = titleText || combined.split('\n')[0] || 'Thông báo thời tiết';
       cleanTitle = cleanTitle.replace(/\[\d{1,2}:\d{2}\]|\b\d{1,2}:\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
-      embedTitle = cleanTitle;
+      embedTitle = `**${cleanTitle}**`;
       embedDesc = `-# Thời gian: ${startTime}`;
     }
     
