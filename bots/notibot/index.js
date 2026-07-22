@@ -378,7 +378,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
       }
       embedTitle = `**${emoji} ${matchedRule.weatherName} đang xuất hiện**`;
       embedDesc = `Nông sản biến thể: ${matchedRule.variantName}`;
-      embedDesc += `\n\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
+      embedDesc += `\n-# Thời gian: ${startTime} ~ ${getEndTimeStr(startTime)}`;
     } else {
       let cleanTitle = titleText || combined.split('\n')[0] || 'Thông báo thời tiết';
       cleanTitle = cleanTitle.replace(/\[\d{1,2}:\d{2}\]|\b\d{1,2}:\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
@@ -490,7 +490,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
     authorIconUrl = `https://cdn.discordapp.com/emojis/${emojiIdMatch[1]}.png`;
   }
   if (targetChannelId === '1512092814941491313' && category === 'Hạt Giống') {
-    const description = formattedItems.join('\n') + `\n\nThời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+    const description = formattedItems.join('\n') + `\nThời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
     return {
       title: `${npcEmoji} ${authorName}`,
       description: description,
@@ -498,14 +498,14 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
     };
   }
   if (targetChannelId === '1522313809123868813' && category === 'Nông Cụ') {
-    const description = formattedItems.join('\n') + `\n\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+    const description = formattedItems.join('\n') + `\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
     return {
       title: `${npcEmoji} ${authorName}`,
       description: description,
       color: embedColor
     };
   }
-  const description = formattedItems.join('\n') + `\n\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
+  const description = formattedItems.join('\n') + `\n-# Thời gian bán: ${startTimeFormatted} ~ ${endTimeFormatted}`;
   return {
     author: {
       name: authorName,
