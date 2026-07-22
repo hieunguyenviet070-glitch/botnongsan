@@ -324,6 +324,27 @@ async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
       `**+${bonus} lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`,
     );
   } catch (_) { /* DM bị tắt */ }
+
+  // Gửi embed thông báo công khai vào kênh chỉ định
+  try {
+    const publicChannel = await _botClient.channels.fetch('1512902714873352373');
+    if (publicChannel?.isTextBased()) {
+      const publicEmbed = {
+        color: 0xf1c40f,
+        title: '🎉 CHÚC MỪNG THÀNH VIÊN NHẬN THƯỞNG',
+        description: [
+          `👤 Người dùng: <@${inviterId}>`,
+          `👥 Đã mời thành công: 05 người`,
+          `🎁 Phần thưởng: +500 lượt thông báo`,
+          '',
+          'Cảm ơn bạn đã đồng hành và phát triển cộng đồng. Hãy tiếp tục mời thêm bạn bè để nhận nhiều lượt sử dụng hơn nhé!',
+        ].join('\n'),
+      };
+      await publicChannel.send({ embeds: [publicEmbed] });
+    }
+  } catch (err) {
+    _log.warn(`[Invite] Không thể gửi embed công khai: ${err.message}`);
+  }
 }
 
 /** Tìm kênh text mà bot có quyền CREATE_INSTANT_INVITE. Ưu tiên systemChannel. */
