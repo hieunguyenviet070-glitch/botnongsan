@@ -1735,6 +1735,29 @@ async function forwardMessage(message, mapping) {
         }
       }, revokeDelay);
     }
+
+    // Kênh refresh-gian-hàng: ping role khi "Cửa hàng nông cụ đã được làm mới"
+    if (mapping.targetChannelId === '1522391343534440478') {
+      const embedTexts = (payload.embeds || [])
+        .map(e => `${e.title || ''} ${e.description || ''}`)
+        .join(' ')
+        .toLowerCase();
+      if (embedTexts.includes('cửa hàng nông cụ đã được làm mới')) {
+        try {
+          const pingMsg = await targetChannel.send({
+            content: '<@&1523935625135525962>',
+            allowedMentions: { roles: ['1523935625135525962'] },
+          });
+          setTimeout(async () => {
+            try {
+              await pingMsg.delete();
+            } catch (_) {}
+          }, 5 * 60 * 1000);
+        } catch (pingErr) {
+          log.error('[Refresh] Không thể gửi ping role nông cụ:', pingErr.message);
+        }
+      }
+    }
   } catch (err) {
     log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
   }
