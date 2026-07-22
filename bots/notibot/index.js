@@ -1714,6 +1714,26 @@ async function forwardMessage(message, mapping) {
     payload.files = files;
   }
   try {
+    // Kênh báo-nông-cụ: gửi ping role riêng trước, rồi mới gửi embed
+    if (mapping.targetChannelId === '1522313809123868813' && payload.content) {
+      const pingContent = payload.content;
+      const taggedRoleIds = (pingContent.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
+      const pingMsg = await targetChannel.send({
+        content: pingContent,
+        allowedMentions: { roles: taggedRoleIds },
+      });
+      if (taggedRoleIds.length > 0 && targetGuild) {
+        deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
+          log.error('Lỗi khi trừ lượt sử dụng:', err.message)
+        );
+      }
+      setTimeout(async () => {
+        try { await pingMsg.delete(); } catch (_) {}
+      }, 30 * 60 * 1000);
+      const embedPayload = { ...payload };
+      delete embedPayload.content;
+      await targetChannel.send(embedPayload);
+    } else {
     const sentMessage = await targetChannel.send(payload);
     if (payload.content) {
       // Trừ lượt sử dụng cho từng thành viên có role được tag
@@ -1723,15 +1743,14 @@ async function forwardMessage(message, mapping) {
           log.error('Lỗi khi trừ lượt sử dụng:', err.message)
         );
       }
-      // Kênh báo-nông-cụ thu hồi role sau 30 phút, các kênh khác sau 5 phút
-      const revokeDelay = mapping.targetChannelId === '1522313809123868813' ? 30 * 60 * 1000 : 5 * 60 * 1000;
+      // Các kênh khác thu hồi role sau 5 phút
       setTimeout(async () => {
         try {
           await sentMessage.edit({ content: null });
         } catch (editErr) {
           log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
         }
-      }, revokeDelay);
+      }, 5 * 60 * 1000);
     }
 
     // Kênh refresh-gian-hàng: ping role khi "Cửa hàng nông cụ đã được làm mới"
@@ -1756,6 +1775,7 @@ async function forwardMessage(message, mapping) {
         }
       }
     }
+    } // end else (non báo-nông-cụ)
   } catch (err) {
     log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
   }
