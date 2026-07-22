@@ -477,7 +477,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
   let embedColor = 0x2b2d31;
   if (category === 'Hạt Giống') {
     npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_seedshop']) ? emojiConfig.emojis['npc_seedshop'] : '<:hatgiong:1523885555170017312>';
-    authorName = 'Cửa hàng hạt giống đang bán';
+    authorName = '**Cửa hàng hạt giống đang bán**';
     embedColor = 0x2ecc71;
   } else if (category === 'Nông Cụ') {
     npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_toolshop']) ? emojiConfig.emojis['npc_toolshop'] : '<:congcu:1523885700737400892>';
