@@ -1714,68 +1714,71 @@ async function forwardMessage(message, mapping) {
     payload.files = files;
   }
   try {
-    // Kênh báo-nông-cụ: gửi ping role riêng trước, rồi mới gửi embed
-    if (mapping.targetChannelId === '1522313809123868813' && payload.content) {
-      const pingContent = payload.content;
-      const taggedRoleIds = (pingContent.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
-      const pingMsg = await targetChannel.send({
-        content: pingContent,
-        allowedMentions: { roles: taggedRoleIds },
-      });
-      if (taggedRoleIds.length > 0 && targetGuild) {
-        deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
-          log.error('Lỗi khi trừ lượt sử dụng:', err.message)
-        );
+    const isNongCu  = mapping.targetChannelId === '1522313809123868813';
+    const isRefresh = mapping.targetChannelId === '1522391343534440478';
+
+    if (isNongCu || isRefresh) {
+      // Gửi ping role riêng TRƯỚC, tự xóa sau 30 phút — embed không bị chỉnh sửa
+      const sendPing = async (content, roleIds) => {
+        try {
+          const pingMsg = await targetChannel.send({
+            content,
+            allowedMentions: { roles: roleIds },
+          });
+          setTimeout(async () => {
+            try { await pingMsg.delete(); } catch (_) {}
+          }, 30 * 60 * 1000);
+        } catch (pingErr) {
+          log.error('[Ping] Không thể gửi ping role:', pingErr.message);
+        }
+      };
+
+      // refresh-gian-hàng: ping nông cụ nếu embed báo làm mới
+      if (isRefresh) {
+        const embedTexts = (payload.embeds || [])
+          .map(e => `${e.title || ''} ${e.description || ''}`)
+          .join(' ')
+          .toLowerCase();
+        if (embedTexts.includes('cửa hàng nông cụ đã được làm mới')) {
+          await sendPing('<@&1523935625135525962>', ['1523935625135525962']);
+        }
       }
-      setTimeout(async () => {
-        try { await pingMsg.delete(); } catch (_) {}
-      }, 30 * 60 * 1000);
+
+      // Ping từ payload.content (role detect tự động)
+      if (payload.content) {
+        const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
+        await sendPing(payload.content, taggedRoleIds);
+        if (taggedRoleIds.length > 0 && targetGuild) {
+          deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
+            log.error('Lỗi khi trừ lượt sử dụng:', err.message)
+          );
+        }
+      }
+
+      // Gửi embed không có content
       const embedPayload = { ...payload };
       delete embedPayload.content;
       await targetChannel.send(embedPayload);
-    } else {
-    const sentMessage = await targetChannel.send(payload);
-    if (payload.content) {
-      // Trừ lượt sử dụng cho từng thành viên có role được tag
-      const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
-      if (taggedRoleIds.length > 0 && targetGuild) {
-        deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
-          log.error('Lỗi khi trừ lượt sử dụng:', err.message)
-        );
-      }
-      // Các kênh khác thu hồi role sau 5 phút
-      setTimeout(async () => {
-        try {
-          await sentMessage.edit({ content: null });
-        } catch (editErr) {
-          log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
-        }
-      }, 5 * 60 * 1000);
-    }
 
-    // Kênh refresh-gian-hàng: ping role khi "Cửa hàng nông cụ đã được làm mới"
-    if (mapping.targetChannelId === '1522391343534440478') {
-      const embedTexts = (payload.embeds || [])
-        .map(e => `${e.title || ''} ${e.description || ''}`)
-        .join(' ')
-        .toLowerCase();
-      if (embedTexts.includes('cửa hàng nông cụ đã được làm mới')) {
-        try {
-          const pingMsg = await targetChannel.send({
-            content: '<@&1523935625135525962>',
-            allowedMentions: { roles: ['1523935625135525962'] },
-          });
-          setTimeout(async () => {
-            try {
-              await pingMsg.delete();
-            } catch (_) {}
-          }, 5 * 60 * 1000);
-        } catch (pingErr) {
-          log.error('[Refresh] Không thể gửi ping role nông cụ:', pingErr.message);
+    } else {
+      // Các kênh khác: gửi content+embed cùng lúc, tự edit xóa ping sau 5 phút
+      const sentMessage = await targetChannel.send(payload);
+      if (payload.content) {
+        const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
+        if (taggedRoleIds.length > 0 && targetGuild) {
+          deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
+            log.error('Lỗi khi trừ lượt sử dụng:', err.message)
+          );
         }
+        setTimeout(async () => {
+          try {
+            await sentMessage.edit({ content: null });
+          } catch (editErr) {
+            log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
+          }
+        }, 5 * 60 * 1000);
       }
     }
-    } // end else (non báo-nông-cụ)
   } catch (err) {
     log.error(`Không thể gửi tin nhắn qua Bot tới kênh đích ID: ${mapping.targetChannelId}. Lỗi:`, err.message);
   }
