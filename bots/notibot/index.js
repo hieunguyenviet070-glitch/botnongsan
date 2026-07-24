@@ -1700,6 +1700,12 @@ async function forwardMessage(message, mapping) {
         newEmb = { ...newEmb, description: newDesc };
         delete newEmb.title;
       }
+      if (newEmb.description) {
+        newEmb.description = newEmb.description
+          .replace(/Thời gian bán\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian bán︱$1 ~ $2**')
+          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian︱$1 ~ $2**')
+          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian︱$1**');
+      }
       return newEmb;
     });
   }
