@@ -97,6 +97,7 @@ const { handleUsageCommand } = require('./listeners/usageCommands.js');
 const { handleReminderEmbed } = require('./listeners/reminderEmbed.js');
 const inviteSystem = require('./listeners/inviteSystem.js');
 const UserInvite = require('./models/UserInvite.js');
+const Creator = require('./models/Creator.js');
 // ─────────────────────────────────────────────────────────────────────────────
 function extractComponentText(components) {
   if (!components || !Array.isArray(components)) return '';
@@ -1291,6 +1292,112 @@ function buildSetupComponents(member) {
     )
   ];
 }
+// ─── Creator command handlers ─────────────────────────────────────────────────
+
+function _isAdmin(userId) {
+  if (!setup.ADMIN_IDS || !Array.isArray(setup.ADMIN_IDS)) return false;
+  const valid = setup.ADMIN_IDS.filter(id => id && id.trim() !== '' && !id.includes('ĐIỀN_ID_'));
+  return valid.length === 0 || valid.includes(userId);
+}
+
+function _findInviteChannelForCreator(guild) {
+  const me = guild.members.me;
+  if (!me) return null;
+  if (guild.systemChannel) {
+    const p = guild.systemChannel.permissionsFor(me);
+    if (p?.has('CREATE_INSTANT_INVITE')) return guild.systemChannel;
+  }
+  return guild.channels.cache.find(c => {
+    if (c.type !== 'GUILD_TEXT') return false;
+    const p = c.permissionsFor(me);
+    return p?.has('CREATE_INSTANT_INVITE') && p?.has('VIEW_CHANNEL');
+  }) ?? null;
+}
+
+async function handleCreatorCommand(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const targetUser = interaction.options.getUser('user');
+  const guildId = guild.id;
+  const userId = targetUser.id;
+
+  // Kiểm tra Creator đã tồn tại chưa, và invite còn hoạt động không
+  let doc = await Creator.findOne({ guildId, userId });
+  if (doc?.inviteCode) {
+    try {
+      const allInvites = await guild.invites.fetch();
+      if (allInvites.has(doc.inviteCode)) {
+        return interaction.editReply({ embeds: [{ color: 0x5865f2,
+          title: '✅ Creator đã tồn tại',
+          description: `👤 <@${userId}> đã là Creator.\n🔗 Link invite: **${doc.inviteURL}**\n👥 Tổng join: **${doc.joinCount}**` }] });
+      }
+    } catch (_) {}
+  }
+
+  // Tạo invite mới
+  const ch = _findInviteChannelForCreator(guild);
+  if (!ch) {
+    return interaction.editReply({ content: '❌ Bot không có quyền tạo link mời trên server này.' });
+  }
+  let invite;
+  try {
+    invite = await guild.invites.create(ch, { maxAge: 0, maxUses: 0, unique: true, reason: `Creator invite cho ${targetUser.tag}` });
+  } catch (err) {
+    return interaction.editReply({ content: `❌ Không thể tạo invite: ${err.message}` });
+  }
+
+  doc = await Creator.findOneAndUpdate(
+    { guildId, userId },
+    { $set: { inviteCode: invite.code, inviteURL: `https://discord.gg/${invite.code}` }, $setOnInsert: { joinCount: 0 } },
+    { upsert: true, new: true }
+  );
+
+  // Thêm vào cache để hệ thống invite tracking nhận ra
+  const gMap = inviteCache.get(guildId) ?? new Map();
+  gMap.set(invite.code, 0);
+  inviteCache.set(guildId, gMap);
+
+  log.info(`[Creator] Thêm Creator mới: ${targetUser.tag} (${userId}) — code: ${invite.code}`);
+  return interaction.editReply({ embeds: [{ color: 0x2ecc71,
+    title: '✅ Đã thêm Creator mới',
+    description: [
+      `👤 Creator: <@${userId}>`,
+      `🔗 Link invite: **${doc.inviteURL}**`,
+      `📅 Ngày tạo: <t:${Math.floor(Date.now() / 1000)}:d>`,
+    ].join('\n') }] });
+}
+
+async function handleCreatorStats(interaction, guild) {
+  await interaction.deferReply({ ephemeral: true });
+  const creators = await Creator.find({ guildId: guild.id }).sort({ joinCount: -1 });
+  if (creators.length === 0) {
+    return interaction.editReply({ content: 'ℹ️ Chưa có Creator nào được thêm.' });
+  }
+  const lines = creators.map((c, i) => {
+    const created = c.createdAt ? `<t:${Math.floor(new Date(c.createdAt).getTime() / 1000)}:d>` : 'N/A';
+    return `**${i + 1}.** 👤 <@${c.userId}>\n🔗 ${c.inviteURL || 'N/A'}  ·  👥 **${c.joinCount}** joins  ·  📅 ${created}`;
+  });
+  return interaction.editReply({ embeds: [{ color: 0x5865f2,
+    title: '📊 Thống kê Creator',
+    description: lines.join('\n\n'),
+    footer: { text: `Tổng: ${creators.length} Creator · Sắp xếp theo số lượt join` } }] });
+}
+
+async function handleCreatorReset(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const result = await Creator.updateMany({ guildId: guild.id }, { $set: { joinCount: 0 } });
+  log.info(`[Creator] Reset thống kê — ${result.modifiedCount} Creator đã được reset.`);
+  return interaction.editReply({ embeds: [{ color: 0xe67e22,
+    title: '🔄 Đã reset thống kê Creator',
+    description: `Đã đặt lại số lượt join của **${result.modifiedCount}** Creator về **0**.\n_Link invite được giữ nguyên._` }] });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 async function registerSlashCommands(guild) {
   try {
     const commandData = [
@@ -1346,6 +1453,19 @@ async function registerSlashCommands(guild) {
             ]
           }
         ]
+      },
+      {
+        name: 'creator',
+        description: 'Thêm nhà quảng bá với link invite riêng (Admin)',
+        options: [{ type: 6, name: 'user', description: 'Người dùng cần thêm làm Creator', required: true }]
+      },
+      {
+        name: 'creator-stats',
+        description: 'Xem thống kê tất cả Creator (sắp xếp theo số lượt join)'
+      },
+      {
+        name: 'creator-reset',
+        description: 'Reset số lượt join của tất cả Creator về 0 (Admin)'
       }
     ];
     if (guild.commands) {
@@ -1391,6 +1511,12 @@ botClient.on('interactionCreate', async (interaction) => {
     if (interaction.isCommand()) {
       if (interaction.commandName === 'usage') {
         await handleUsageCommand(interaction, guild, member);
+      } else if (interaction.commandName === 'creator') {
+        await handleCreatorCommand(interaction, guild);
+      } else if (interaction.commandName === 'creator-stats') {
+        await handleCreatorStats(interaction, guild);
+      } else if (interaction.commandName === 'creator-reset') {
+        await handleCreatorReset(interaction, guild);
       } else if (interaction.commandName === 'setup') {
         if (setup.ADMIN_IDS && Array.isArray(setup.ADMIN_IDS)) {
           const validAdminIds = setup.ADMIN_IDS.filter(id => id && id.trim() !== '' && !id.includes('ĐIỀN_ID_'));

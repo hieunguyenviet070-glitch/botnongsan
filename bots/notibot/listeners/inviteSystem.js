@@ -103,8 +103,18 @@ async function handleGuildMemberAdd(member) {
     // ── 5. Tra DB để lấy chủ invite (KHÔNG dùng invite.inviter) ─────────────
     const inviteOwner = await UserInvite.findOne({ guildId: g.id, inviteCode: usedCode });
     if (!inviteOwner) {
-      // Invite này không được tạo qua hệ thống bot — bỏ qua
-      _log.info(`[Invite] Code ${usedCode} không có trong DB — bỏ qua.`);
+      // Kiểm tra có phải invite của Creator không
+      const Creator = require('../models/Creator.js');
+      const creatorDoc = await Creator.findOneAndUpdate(
+        { guildId: g.id, inviteCode: usedCode },
+        { $inc: { joinCount: 1 } },
+        { new: true },
+      );
+      if (creatorDoc) {
+        _log.info(`[Creator] ${member.user.tag} vào server qua invite Creator ${usedCode} (creator: ${creatorDoc.userId}) — tổng: ${creatorDoc.joinCount}`);
+      } else {
+        _log.info(`[Invite] Code ${usedCode} không có trong DB — bỏ qua.`);
+      }
       return;
     }
     const inviterId = inviteOwner.userId;
