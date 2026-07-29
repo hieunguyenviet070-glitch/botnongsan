@@ -1882,20 +1882,18 @@ async function forwardMessage(message, mapping) {
     });
   }
 
-  // Thêm image (giữa) + thumbnail (góc phải) GIF cho kênh báo-hạt-giống
+  // Thêm thumbnail GIF (góc phải) cho kênh báo-hạt-giống
   if (mapping.targetChannelId === '1512092814941491313' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
-      image: { url: 'https://media.discordapp.net/stickers/1532148291385692320.gif?size=160' },
       thumbnail: { url: 'https://media.discordapp.net/stickers/1532148291385692320.gif?size=160' }
     }));
   }
 
-  // Thêm image (giữa) + thumbnail (góc phải) GIF cho kênh báo-nông-cụ
+  // Thêm thumbnail GIF (góc phải) cho kênh báo-nông-cụ
   if (mapping.targetChannelId === '1522313809123868813' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
-      image: { url: 'https://media.discordapp.net/stickers/1532144032405520576.gif?size=160' },
       thumbnail: { url: 'https://media.discordapp.net/stickers/1532144032405520576.gif?size=160' }
     }));
   }
