@@ -1782,7 +1782,7 @@ async function forwardMessage(message, mapping) {
   }
 
   // Chèn dòng điều hướng cài đặt vào cuối mỗi embed (tất cả kênh thông báo có type)
-  const SETUP_FOOTER = '-# Chỉnh thông báo [tại đây](https://discord.com/channels/1363986043509932093/1512105165279199392)';
+  const SETUP_FOOTER = '-# Chỉnh thông báo [tại đây](https://discord.com/channels/880309287056965633/1531672149276758067)';
   if (mapping.type && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
