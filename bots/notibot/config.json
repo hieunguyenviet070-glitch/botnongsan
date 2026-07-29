@@ -23,6 +23,30 @@
       "targetChannelId": "1522391343534440478",
       "targetWebhookUrl": "",
       "type": "refresh"
+    },
+    {
+      "sourceChannelId": "1427881650234195988",
+      "targetChannelId": "1519608365397835816",
+      "targetWebhookUrl": "",
+      "type": "seeds"
+    },
+    {
+      "sourceChannelId": "1428368453760319508",
+      "targetChannelId": "1519608409731760190",
+      "targetWebhookUrl": "",
+      "type": "weather"
+    },
+    {
+      "sourceChannelId": "1453016064807010497",
+      "targetChannelId": "1519621259879780352",
+      "targetWebhookUrl": "",
+      "type": "tools"
+    },
+    {
+      "sourceChannelId": "1455122248582303949",
+      "targetChannelId": "1531684411202994356",
+      "targetWebhookUrl": "",
+      "type": "refresh"
     }
   ],
   "ignoreBots": false,
