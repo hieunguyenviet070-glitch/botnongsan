@@ -1882,6 +1882,14 @@ async function forwardMessage(message, mapping) {
     });
   }
 
+  // Thêm thumbnail GIF cho tất cả embed trong kênh báo-nông-cụ
+  if (mapping.targetChannelId === '1522313809123868813' && payload && payload.embeds) {
+    payload.embeds = payload.embeds.map(emb => ({
+      ...emb,
+      thumbnail: { url: 'https://media.discordapp.net/stickers/1532144032405520576.gif?size=160' }
+    }));
+  }
+
   // Chèn dòng điều hướng cài đặt vào cuối mỗi embed (4 kênh thông báo)
   const SETUP_FOOTER = '-# Chỉnh thông báo [tại đây](https://discord.com/channels/1363986043509932093/1512105165279199392)';
   const NOTIFY_CHANNELS = ['1512092816837181440','1512092814941491313','1522313809123868813','1522391343534440478'];
