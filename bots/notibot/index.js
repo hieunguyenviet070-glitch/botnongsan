@@ -1827,6 +1827,10 @@ async function forwardMessage(message, mapping) {
           .toLowerCase();
         if (embedTexts.includes('cửa hàng nông cụ đã được làm mới')) {
           await sendPing('<@&1523935625135525962>', ['1523935625135525962']);
+          // Kênh 1531684411202994356: ping thêm role riêng, tự xóa sau 30 phút
+          if (mapping.targetChannelId === '1531684411202994356') {
+            await sendPing('<@&1532160502120054944>', ['1532160502120054944']);
+          }
         }
       }
 
