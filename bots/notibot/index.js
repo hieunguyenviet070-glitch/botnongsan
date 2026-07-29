@@ -1851,19 +1851,22 @@ async function forwardMessage(message, mapping) {
         delete newEmb.title;
       }
       // Hàm chuẩn hoá dòng "Thời gian: HH:mm ~ HH:mm" → "### Thời gian | HH:mm ~ HH:mm"
-      // Áp dụng cho cả description lẫn field value
+      // - Xử lý mọi tổ hợp bold/italic marker (**, *, __) bao quanh label hoặc giá trị
+      // - Xử lý cả ASCII (:, ~, -) lẫn Unicode full-width (：, ～)
+      // - Nuốt luôn các trailing marker (**) còn sót sau khi leading marker đã bị stripped
       const normalizeTimeLines = (text) => {
         if (!text) return text;
-        return text
-          .replace(/Thời gian bán\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian bán︱$1 ~ $2**')
-          // Bold + dấu phân cách bất kỳ (-, –, —, ~)
-          .replace(/\*\*Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—~]\s*`?(\d{1,2}:\d{2})`?\*\*/gi, '### Thời gian | $1 ~ $2')
-          // Dấu - hoặc – hoặc — giữa hai mốc giờ
-          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—]\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
-          // Dấu ~ giữa hai mốc giờ
-          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
-          // Chỉ một mốc giờ
-          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?(?!\s*[~\d:-])/gi, '### Thời gian | $1');
+        // Bảo vệ "Thời gian bán" trước (dạng riêng, giữ bold)
+        const result = text
+          .replace(/[\*_]*Thời gian bán[\*_]*\s*[：:]\s*`?(\d{1,2}[：:]\d{2})`?\s*[～~]\s*`?(\d{1,2}[：:]\d{2})`?[\*_]*/gi,
+            '**Thời gian bán︱$1 ~ $2**')
+          // Hai mốc giờ: bất kỳ markdown wrapper nào quanh label/giá trị, dấu phân cách -, –, —, ~, ～
+          .replace(/[\*_]*Thời gian[\*_]*\s*[：:]\s*[\*_]*`?(\d{1,2}[：:]\d{2})`?[\*_]*\s*[-–—～~]\s*[\*_]*`?(\d{1,2}[：:]\d{2})`?[\*_]*/gi,
+            '### Thời gian | $1 ~ $2')
+          // Một mốc giờ duy nhất
+          .replace(/[\*_]*Thời gian[\*_]*\s*[：:]\s*[\*_]*`?(\d{1,2}[：:]\d{2})`?[\*_]*(?!\s*[-–—～~\d:])/gi,
+            '### Thời gian | $1');
+        return result;
       };
       if (newEmb.description) {
         newEmb.description = normalizeTimeLines(newEmb.description);
