@@ -1114,22 +1114,22 @@ const roleDefinitions = {
   'main_refresh': { name: 'Thời Gian Làm Mới', key: 'Thời Gian Làm Mới' }
 };
 const seedOptions = [
-  { label: 'Xương rồng', value: 'cactus', emoji: '<:xuongrong:1523864983631564881>' },
-  { label: 'Táo', value: 'apple', emoji: '<:tao:1523865040560848976>' },
-  { label: 'Nho', value: 'grape', emoji: '<:nho:1523865108483149854>' },
-  { label: 'Bí ngô', value: 'pumpkin', emoji: '<:bingo:1523865163537846404>' },
-  { label: 'Dưa hấu', value: 'watermelon', emoji: '<:duahau:1523865209679249568>' },
-  { label: 'Dừa', value: 'coconut', emoji: '<:dua:1523865265488789635>' },
-  { label: 'Xoài', value: 'mango', emoji: '<:xoai:1523865845153923253>' },
-  { label: 'Đậu', value: 'bean', emoji: '<:dau:1523865951395774564>' },
-  { label: 'Khế', value: 'starfruit', emoji: '<:khe:1523868016532652153>' },
-  { label: 'Táo đường', value: 'custard_apple', emoji: '<:taoduong:1523868066646200411>' },
-  { label: 'Đu đủ', value: 'papaya', emoji: '<:dudu:1523868251116011582>' },
-  { label: 'Mãng cầu', value: 'mangcau', emoji: '<:mangcau:1523868887714631830>' },
-  { label: 'Anh đào', value: 'cherry', emoji: '<:anhdao:1523869008695267328>' },
-  { label: 'Cẩm tú cầu', value: 'hydrangea', emoji: '<:camtucau:1523869059890937886>' },
-  { label: 'Hoa loa kèn', value: 'lily', emoji: '<:hoaloaken:1523869275276841050>' },
-  { label: 'Hoa hồng', value: 'rose', emoji: '<:hoahong:1523869332776554596>' }
+  { label: 'Xương rồng', value: 'cactus', emoji: { id: '1531990343657062520', name: 'Xuong_rong', animated: true } },
+  { label: 'Táo', value: 'apple', emoji: { id: '1531990494878498877', name: 'tao', animated: true } },
+  { label: 'Nho', value: 'grape', emoji: { id: '1531990650134859948', name: 'nho', animated: true } },
+  { label: 'Bí ngô', value: 'pumpkin', emoji: { id: '1531990996957659166', name: 'bi_ngo', animated: true } },
+  { label: 'Dưa hấu', value: 'watermelon', emoji: { id: '1531990424791679018', name: 'duahau', animated: true } },
+  { label: 'Dừa', value: 'coconut', emoji: { id: '1531990962962956399', name: 'dua', animated: true } },
+  { label: 'Xoài', value: 'mango', emoji: { id: '1531990383695757444', name: 'xoai', animated: true } },
+  { label: 'Đậu', value: 'bean', emoji: { id: '1531990918952124556', name: 'dau', animated: true } },
+  { label: 'Khế', value: 'starfruit', emoji: { id: '1523868016532652153', name: 'khe', animated: false } },
+  { label: 'Táo đường', value: 'custard_apple', emoji: { id: '1532046281914974329', name: 'tao_duong', animated: true } },
+  { label: 'Đu đủ', value: 'papaya', emoji: { id: '1532049208067231956', name: 'du_du', animated: true } },
+  { label: 'Mãng cầu', value: 'mangcau', emoji: { id: '1532048895943643446', name: 'mang_cau', animated: true } },
+  { label: 'Anh đào', value: 'cherry', emoji: { id: '1532045227467083786', name: 'anh_dao', animated: true } },
+  { label: 'Cẩm tú cầu', value: 'hydrangea', emoji: { id: '1531990457460981770', name: 'tucau', animated: true } },
+  { label: 'Hoa loa kèn', value: 'lily', emoji: { id: '1531990740169658491', name: 'loa_ken', animated: true } },
+  { label: 'Hoa hồng', value: 'rose', emoji: { id: '1531990782490181692', name: 'hoa_hong', animated: true } }
 ];
 const weatherOptions = [
   { label: 'Trời Sáng', value: 'normal_day', emoji: '<:emoji_113:1523956231805599764>' },
