@@ -47,7 +47,9 @@ try {
   if (config.channelMappings && Array.isArray(config.channelMappings)) {
     config.channelMappings = config.channelMappings.map(mapping => ({
       sourceChannelId: (mapping.sourceChannelId || '').trim(),
-      targetChannelId: (mapping.targetChannelId || '').trim()
+      targetChannelId: (mapping.targetChannelId || '').trim(),
+      targetWebhookUrl: (mapping.targetWebhookUrl || '').trim(),
+      type: (mapping.type || '').trim()
     })).filter(m => m.sourceChannelId !== '' && m.targetChannelId !== '');
   } else {
     config.channelMappings = [];
@@ -266,7 +268,7 @@ function formatToVietnameseTime(timeStr) {
   if (isNaN(hh) || isNaN(mm)) return timeStr;
   return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
 }
-function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
+function formatWeatherEmbed(originalEmbed, defaultRoleName, channelType) {
   if (defaultRoleName !== 'Thời Tiết') return null;
   const titleText = originalEmbed.title || '';
   const descText = originalEmbed.description || '';
@@ -367,7 +369,7 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
     }
   }
 
-  if (targetChannelId === '1512092816837181440') {
+  if (channelType === 'weather') {
     // Luôn dùng giờ thực của máy chủ theo múi giờ Việt Nam (UTC+7)
     const vnFormatter = new Intl.DateTimeFormat('vi-VN', {
       timeZone: 'Asia/Ho_Chi_Minh',
@@ -426,14 +428,14 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
   }
   return null;
 }
-function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannelId) {
+function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, channelType) {
   if (!rawText) return null;
   const cleanRawText = rawText.replace(/<@&?\d+>|<#\d+>/g, '').trim();
   const match = cleanRawText.match(/\[(\d{1,2}:\d{2})\]\s*(.*)$/s);
   if (!match) return null;
   let startTimeStr = match[1];
   // Kênh báo-nông-cụ: dùng giờ Việt Nam hiện tại làm thời điểm bắt đầu
-  if (targetChannelId === '1522313809123868813') {
+  if (channelType === 'tools') {
     const vnFormatter = new Intl.DateTimeFormat('vi-VN', {
       timeZone: 'Asia/Ho_Chi_Minh',
       hour: '2-digit',
@@ -481,7 +483,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
   }
   if (formattedItems.length === 0) return null;
   // Kênh báo-nông-cụ dùng 30 phút, các kênh khác dùng 5 phút
-  const endMins = targetChannelId === '1522313809123868813' ? 30 : 5;
+  const endMins = channelType === 'tools' ? 30 : 5;
   const endTimeStr = getEndTimeStr(startTimeStr, endMins);
   const startTimeFormatted = formatToVietnameseTime(startTimeStr);
   const endTimeFormatted = formatToVietnameseTime(endTimeStr);
@@ -502,14 +504,14 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
   if (emojiIdMatch) {
     authorIconUrl = `https://cdn.discordapp.com/emojis/${emojiIdMatch[1]}.png`;
   }
-  if (targetChannelId === '1512092814941491313' && category === 'Hạt Giống') {
+  if (channelType === 'seeds' && category === 'Hạt Giống') {
     const description = `### ${npcEmoji} ${authorName}\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
     return {
       description: description,
       color: embedColor
     };
   }
-  if (targetChannelId === '1522313809123868813' && category === 'Nông Cụ') {
+  if (channelType === 'tools' && category === 'Nông Cụ') {
     const description = `### ${npcEmoji} ${authorName}\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
     return {
       description: description,
@@ -952,8 +954,8 @@ async function formatPlayTogetherNotification(message, targetGuild) {
   }
   const botAvatarUrl = botClient.user ? botClient.user.displayAvatarURL() : null;
   const mapping = config.channelMappings.find(m => m.sourceChannelId === message.channel.id);
-  const targetChannelId = mapping ? mapping.targetChannelId : null;
-  const shopEmbed = formatShopEmbedIfMatches(rawContent, defaultRoleName, botAvatarUrl, targetChannelId);
+  const channelType = mapping ? mapping.type : null;
+  const shopEmbed = formatShopEmbedIfMatches(rawContent, defaultRoleName, botAvatarUrl, channelType);
   if (shopEmbed) {
     return {
       content: rolesToPing.length > 0 ? rolesToPing.join(' ') : null,
@@ -963,7 +965,7 @@ async function formatPlayTogetherNotification(message, targetGuild) {
   if (message.embeds && message.embeds.length > 0) {
     const targetEmbeds = message.embeds.map(originalEmbed => {
       if (defaultRoleName === 'Thời Tiết') {
-        const customWeather = formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId);
+        const customWeather = formatWeatherEmbed(originalEmbed, defaultRoleName, channelType);
         if (customWeather) {
           return customWeather;
         }
@@ -1074,7 +1076,7 @@ async function formatPlayTogetherNotification(message, targetGuild) {
     color: embedColor
   };
   if (defaultRoleName === 'Thời Tiết') {
-    const customWeather = formatWeatherEmbed(embed, defaultRoleName, targetChannelId);
+    const customWeather = formatWeatherEmbed(embed, defaultRoleName, channelType);
     if (customWeather) {
       embed = customWeather;
     }
@@ -1828,7 +1830,7 @@ async function forwardMessage(message, mapping) {
   const targetGuild = await getTargetGuild(mapping, sourceGuildId);
   const payload = await formatPlayTogetherNotification(message, targetGuild);
 
-  if (mapping.targetChannelId === '1522391343534440478' && payload && payload.embeds) {
+  if (mapping.type === 'refresh' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => {
       let newEmb = { ...emb, color: 0xED4245 };
       // Thêm thumbnail cho embed "Đơn hàng đã được làm mới"
@@ -1883,7 +1885,7 @@ async function forwardMessage(message, mapping) {
   }
 
   // Thêm thumbnail GIF (góc phải) cho kênh báo-hạt-giống
-  if (mapping.targetChannelId === '1512092814941491313' && payload && payload.embeds) {
+  if (mapping.type === 'seeds' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
       thumbnail: { url: 'https://media.discordapp.net/stickers/1532148291385692320.gif?size=160' }
@@ -1891,17 +1893,16 @@ async function forwardMessage(message, mapping) {
   }
 
   // Thêm thumbnail GIF (góc phải) cho kênh báo-nông-cụ
-  if (mapping.targetChannelId === '1522313809123868813' && payload && payload.embeds) {
+  if (mapping.type === 'tools' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
       thumbnail: { url: 'https://media.discordapp.net/stickers/1532144032405520576.gif?size=160' }
     }));
   }
 
-  // Chèn dòng điều hướng cài đặt vào cuối mỗi embed (4 kênh thông báo)
+  // Chèn dòng điều hướng cài đặt vào cuối mỗi embed (tất cả kênh thông báo có type)
   const SETUP_FOOTER = '-# Chỉnh thông báo [tại đây](https://discord.com/channels/1363986043509932093/1512105165279199392)';
-  const NOTIFY_CHANNELS = ['1512092816837181440','1512092814941491313','1522313809123868813','1522391343534440478'];
-  if (NOTIFY_CHANNELS.includes(mapping.targetChannelId) && payload && payload.embeds) {
+  if (mapping.type && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => ({
       ...emb,
       description: emb.description ? `${emb.description}\n${SETUP_FOOTER}` : SETUP_FOOTER,
@@ -1918,8 +1919,8 @@ async function forwardMessage(message, mapping) {
     payload.files = files;
   }
   try {
-    const isNongCu  = mapping.targetChannelId === '1522313809123868813';
-    const isRefresh = mapping.targetChannelId === '1522391343534440478';
+    const isNongCu  = mapping.type === 'tools';
+    const isRefresh = mapping.type === 'refresh';
 
     if (isNongCu || isRefresh) {
       // Gửi ping role riêng TRƯỚC, tự xóa sau 30 phút — embed không bị chỉnh sửa
