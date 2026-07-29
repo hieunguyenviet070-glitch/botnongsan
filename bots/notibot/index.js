@@ -1816,24 +1816,6 @@ async function forwardMessage(message, mapping) {
   const targetGuild = await getTargetGuild(mapping, sourceGuildId);
   const payload = await formatPlayTogetherNotification(message, targetGuild);
 
-  if (mapping.targetChannelId === '1522313809123868813' && payload && payload.embeds) {
-    payload.embeds = payload.embeds.map(emb => {
-      if (!emb.description) return emb;
-      const newDesc = emb.description
-        // "Thời gian: 20:30 - 21:00" (có thể có backtick bao quanh giờ, dấu - hoặc – hoặc —)
-        .replace(
-          /Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—]\s*`?(\d{1,2}:\d{2})`?/gi,
-          '### Thời gian | $1 ~ $2'
-        )
-        // "Thời gian: 20:30" (chỉ có giờ bắt đầu, không có giờ kết thúc)
-        .replace(
-          /Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?(?!\s*[~\d:-])/gi,
-          '### Thời gian | $1'
-        );
-      return { ...emb, description: newDesc };
-    });
-  }
-
   if (mapping.targetChannelId === '1522391343534440478' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => {
       let newEmb = { ...emb, color: 0xED4245 };
@@ -1847,8 +1829,12 @@ async function forwardMessage(message, mapping) {
       if (newEmb.description) {
         newEmb.description = newEmb.description
           .replace(/Thời gian bán\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian bán︱$1 ~ $2**')
-          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian︱$1 ~ $2**')
-          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian︱$1**');
+          // Dấu - hoặc – hoặc — giữa hai mốc giờ → ### heading với ~
+          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—]\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
+          // Dấu ~ giữa hai mốc giờ → ### heading với ~
+          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
+          // Chỉ một mốc giờ
+          .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?(?!\s*[~\d:-])/gi, '### Thời gian | $1');
       }
       return newEmb;
     });
