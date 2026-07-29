@@ -502,7 +502,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
     authorIconUrl = `https://cdn.discordapp.com/emojis/${emojiIdMatch[1]}.png`;
   }
   if (targetChannelId === '1512092814941491313' && category === 'Hạt Giống') {
-    const description = `### ${npcEmoji} ${authorName} ###\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
+    const description = `## ${npcEmoji} ${authorName}\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
     return {
       description: description,
       color: embedColor
