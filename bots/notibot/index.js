@@ -491,7 +491,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, channelType) 
     embedColor = 0x2ecc71;
   } else if (category === 'Nông Cụ') {
     npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_toolshop']) ? emojiConfig.emojis['npc_toolshop'] : '<:congcu:1523885700737400892>';
-    authorName = 'Nông Cụ Đang Bán';
+    authorName = 'Nông cụ đang bán';
     embedColor = 0x3498db;
   }
   let authorIconUrl = null;
