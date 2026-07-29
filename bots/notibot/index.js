@@ -1156,8 +1156,6 @@ const weatherOptions = [
   { label: 'Gió Cát',      value: 'sandstorm',       emoji: seedEmoji('sandstorm') },
   { label: 'Sương Sớm',    value: 'mist',            emoji: seedEmoji('mist') },
   { label: 'Nắng Nóng',    value: 'heatwave',        emoji: seedEmoji('heatwave') },
-  { label: 'Gió Xuân',     value: 'spring_wind',     emoji: seedEmoji('spring_wind') },
-  { label: 'Sóng Điện Từ', value: 'electromagnetic', emoji: seedEmoji('electromagnetic') },
 ];
 const toolOptions = [
   { label: 'Vòi Tưới Thường', value: 'normal_watering_can', emoji: { id: '1532041549721108630', name: 'voi_xanh', animated: true } },
