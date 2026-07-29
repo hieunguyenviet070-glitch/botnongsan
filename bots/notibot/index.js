@@ -1476,14 +1476,13 @@ botClient.on('interactionCreate', async (interaction) => {
       } else if (interaction.commandName === 'creator-reset') {
         await handleCreatorReset(interaction, guild);
       } else if (interaction.commandName === 'setup') {
-        if (setup.ADMIN_IDS && Array.isArray(setup.ADMIN_IDS)) {
-          const validAdminIds = setup.ADMIN_IDS.filter(id => id && id.trim() !== '' && !id.includes('ĐIỀN_ID_'));
-          if (validAdminIds.length > 0 && !validAdminIds.includes(interaction.user.id)) {
-            return interaction.reply({
-              content: '❌ Bạn không có quyền sử dụng lệnh `/setup` này!',
-              ephemeral: true
-            });
-          }
+        const isServerAdmin = interaction.member && interaction.member.permissions &&
+          interaction.member.permissions.has('ADMINISTRATOR');
+        if (!isServerAdmin) {
+          return interaction.reply({
+            content: '❌ Bạn cần quyền **Quản trị viên** để sử dụng lệnh này!',
+            ephemeral: true
+          });
         }
         await interaction.reply({
           content: '⏳ Đang đồng bộ và khởi tạo các vai trò trên máy chủ, vui lòng đợi một chút...'
