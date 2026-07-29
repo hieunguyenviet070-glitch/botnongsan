@@ -401,7 +401,8 @@ function formatWeatherEmbed(originalEmbed, defaultRoleName, targetChannelId) {
     return {
       title: embedTitle,
       description: embedDesc,
-      color: 0xFFD700
+      color: 0xFFD700,
+      thumbnail: { url: 'https://media.discordapp.net/stickers/1532063123664539819.gif?size=160' }
     };
   }
 
