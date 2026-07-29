@@ -1126,7 +1126,7 @@ const seedOptions = [
   { label: 'Táo đường', value: 'custard_apple', emoji: { id: '1532046281914974329', name: 'tao_duong', animated: true } },
   { label: 'Đu đủ', value: 'papaya', emoji: { id: '1532049208067231956', name: 'du_du', animated: true } },
   { label: 'Mãng cầu', value: 'mangcau', emoji: { id: '1532048895943643446', name: 'mang_cau', animated: true } },
-  { label: 'Anh đào', value: 'cherry', emoji: { id: '1532045227467083786', name: 'anh_dao', animated: true } },
+  { label: 'Anh đào', value: 'cherry', emoji: { id: '1532053796639867011', name: 'anh_dao', animated: true } },
   { label: 'Cẩm tú cầu', value: 'hydrangea', emoji: { id: '1531990457460981770', name: 'tucau', animated: true } },
   { label: 'Hoa loa kèn', value: 'lily', emoji: { id: '1531990740169658491', name: 'loa_ken', animated: true } },
   { label: 'Hoa hồng', value: 'rose', emoji: { id: '1531990782490181692', name: 'hoa_hong', animated: true } }
