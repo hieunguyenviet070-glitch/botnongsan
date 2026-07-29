@@ -1143,20 +1143,21 @@ const seedOptions = [
   { label: 'Hoa loa kèn', value: 'lily',           emoji: seedEmoji('lily') },
   { label: 'Hoa hồng',   value: 'rose',           emoji: seedEmoji('rose') },
 ];
+// weatherOptions đọc emoji từ emojis.json — chỉ cần sửa emojis.json để thay emoji
 const weatherOptions = [
-  { label: 'Trời Sáng', value: 'normal_day', emoji: '<:emoji_113:1523956231805599764>' },
-  { label: 'Trời Tối', value: 'normal_night', emoji: '<:emoji_112:1523956027026968586>' },
-  { label: 'Ánh Trăng', value: 'moonlight', emoji: '<:anhtrang:1523873368829595710>' },
-  { label: 'Mưa', value: 'rainy', emoji: '<:mua:1523873439968919652>' },
-  { label: 'Bão', value: 'thunderstorm', emoji: '<:bao:1523873558143565886>' },
-  { label: 'Cực Quang', value: 'eclipse', emoji: '<:cucquang:1523873288969785394>' },
-  { label: 'Gió', value: 'windy', emoji: '<:gio:1523873647842955414>' },
-  { label: 'Sương Mù', value: 'foggy', emoji: '🌫️' },
-  { label: 'Gió cát', value: 'sandstorm', emoji: '<:giocat:1523873722182664304>' },
-  { label: 'Sương sớm', value: 'mist', emoji: '<:suongsom:1523874606878953623>' },
-  { label: 'Nắng nóng', value: 'heatwave', emoji: '<:nangnong:1523874825720827904>' },
-  { label: 'Gió xuân', value: 'spring_wind', emoji: '<:gioxuan:1523874877088469163>' },
-  { label: 'Sóng điện từ', value: 'electromagnetic', emoji: '<:songdientu:1523874917890789497>' }
+  { label: 'Trời Sáng',     value: 'normal_day',     emoji: seedEmoji('normal_day') },
+  { label: 'Trời Tối',      value: 'normal_night',   emoji: seedEmoji('normal_night') },
+  { label: 'Ánh Trăng',    value: 'moonlight',      emoji: seedEmoji('moonlight') },
+  { label: 'Mưa',           value: 'rainy',          emoji: seedEmoji('rainy') },
+  { label: 'Bão',           value: 'thunderstorm',   emoji: seedEmoji('thunderstorm') },
+  { label: 'Cực Quang',    value: 'eclipse',         emoji: seedEmoji('eclipse') },
+  { label: 'Gió',           value: 'windy',          emoji: seedEmoji('windy') },
+  { label: 'Sương Mù',     value: 'foggy',           emoji: seedEmoji('foggy') },
+  { label: 'Gió Cát',      value: 'sandstorm',       emoji: seedEmoji('sandstorm') },
+  { label: 'Sương Sớm',    value: 'mist',            emoji: seedEmoji('mist') },
+  { label: 'Nắng Nóng',    value: 'heatwave',        emoji: seedEmoji('heatwave') },
+  { label: 'Gió Xuân',     value: 'spring_wind',     emoji: seedEmoji('spring_wind') },
+  { label: 'Sóng Điện Từ', value: 'electromagnetic', emoji: seedEmoji('electromagnetic') },
 ];
 const toolOptions = [
   { label: 'Vòi Tưới Thường', value: 'normal_watering_can', emoji: { id: '1532041549721108630', name: 'voi_xanh', animated: true } },
