@@ -1127,22 +1127,22 @@ const roleDefinitions = {
 };
 const seedOptions = [
   // Emoji đọc từ emojis.json — chỉ cần sửa emojis.json để đổi emoji, không cần sửa file này
-  { label: 'Xương rồng',  value: 'cactus',        emoji: seedEmoji('cactus') },
-  { label: 'Táo',         value: 'apple',          emoji: seedEmoji('apple') },
-  { label: 'Nho',         value: 'grape',          emoji: seedEmoji('grape') },
-  { label: 'Bí ngô',      value: 'pumpkin',        emoji: seedEmoji('pumpkin') },
-  { label: 'Dưa hấu',    value: 'watermelon',     emoji: seedEmoji('watermelon') },
-  { label: 'Dừa',         value: 'coconut',        emoji: seedEmoji('coconut') },
-  { label: 'Xoài',        value: 'mango',          emoji: seedEmoji('mango') },
-  { label: 'Đậu',         value: 'bean',           emoji: seedEmoji('bean') },
-  { label: 'Khế',         value: 'starfruit',      emoji: seedEmoji('starfruit') },
-  { label: 'Táo đường',  value: 'custard_apple',  emoji: seedEmoji('custard_apple') },
-  { label: 'Đu đủ',      value: 'papaya',         emoji: seedEmoji('papaya') },
-  { label: 'Mãng cầu',   value: 'mangcau',        emoji: seedEmoji('mangcau') },
-  { label: 'Anh đào',    value: 'cherry',         emoji: seedEmoji('cherry') },
-  { label: 'Cẩm tú cầu', value: 'hydrangea',      emoji: seedEmoji('hydrangea') },
-  { label: 'Hoa loa kèn', value: 'lily',           emoji: seedEmoji('lily') },
-  { label: 'Hoa hồng',   value: 'rose',           emoji: seedEmoji('rose') },
+  { label: 'Xương Rồng',  value: 'cactus',        emoji: seedEmoji('cactus') },
+  { label: 'Táo',          value: 'apple',          emoji: seedEmoji('apple') },
+  { label: 'Nho',          value: 'grape',          emoji: seedEmoji('grape') },
+  { label: 'Bí Ngô',       value: 'pumpkin',        emoji: seedEmoji('pumpkin') },
+  { label: 'Dưa Hấu',     value: 'watermelon',     emoji: seedEmoji('watermelon') },
+  { label: 'Dừa',          value: 'coconut',        emoji: seedEmoji('coconut') },
+  { label: 'Xoài',         value: 'mango',          emoji: seedEmoji('mango') },
+  { label: 'Đậu',          value: 'bean',           emoji: seedEmoji('bean') },
+  { label: 'Khế',          value: 'starfruit',      emoji: seedEmoji('starfruit') },
+  { label: 'Táo Đường',   value: 'custard_apple',  emoji: seedEmoji('custard_apple') },
+  { label: 'Đu Đủ',       value: 'papaya',         emoji: seedEmoji('papaya') },
+  { label: 'Mãng Cầu',    value: 'mangcau',        emoji: seedEmoji('mangcau') },
+  { label: 'Anh Đào',     value: 'cherry',         emoji: seedEmoji('cherry') },
+  { label: 'Cẩm Tú Cầu', value: 'hydrangea',      emoji: seedEmoji('hydrangea') },
+  { label: 'Hoa Loa Kèn', value: 'lily',           emoji: seedEmoji('lily') },
+  { label: 'Hoa Hồng',    value: 'rose',           emoji: seedEmoji('rose') },
 ];
 // weatherOptions đọc emoji từ emojis.json — chỉ cần sửa emojis.json để thay emoji
 const weatherOptions = [
@@ -1164,9 +1164,9 @@ const toolOptions = [
   { label: 'Vòi Tưới Siêu Cao Cấp', value: 'expert_watering_can', emoji: { id: '1531990577728720996', name: 'voi_do', animated: true } }
 ];
 const refreshOptions = [
-  { label: 'Đơn hàng', value: 'refresh_order', emoji: '<:Order:1523883533326749786>' },
-  { label: 'Cửa hàng nội thất', value: 'refresh_furniture', emoji: '<:emoji_114:1523977828830412810>' },
-  { label: 'Cửa hàng nông cụ', value: 'refresh_toolshop', emoji: '<:Toolshop:1523883603484872905>' }
+  { label: 'Đơn Hàng',          value: 'refresh_order',     emoji: '<:Order:1523883533326749786>' },
+  { label: 'Cửa Hàng Nội Thất', value: 'refresh_furniture', emoji: '<:emoji_114:1523977828830412810>' },
+  { label: 'Cửa Hàng Nông Cụ',  value: 'refresh_toolshop',  emoji: '<:Toolshop:1523883603484872905>' }
 ];
 const mainOptions = [
   { label: 'Hạt Giống (Mọi hạt giống)', value: 'main_seed', emoji: '🌱' },
