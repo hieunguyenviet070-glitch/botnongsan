@@ -1838,15 +1838,30 @@ async function forwardMessage(message, mapping) {
         newEmb = { ...newEmb, description: newDesc };
         delete newEmb.title;
       }
-      if (newEmb.description) {
-        newEmb.description = newEmb.description
+      // Hàm chuẩn hoá dòng "Thời gian: HH:mm ~ HH:mm" → "### Thời gian | HH:mm ~ HH:mm"
+      // Áp dụng cho cả description lẫn field value
+      const normalizeTimeLines = (text) => {
+        if (!text) return text;
+        return text
           .replace(/Thời gian bán\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '**Thời gian bán︱$1 ~ $2**')
-          // Dấu - hoặc – hoặc — giữa hai mốc giờ → ### heading với ~
+          // Bold + dấu phân cách bất kỳ (-, –, —, ~)
+          .replace(/\*\*Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—~]\s*`?(\d{1,2}:\d{2})`?\*\*/gi, '### Thời gian | $1 ~ $2')
+          // Dấu - hoặc – hoặc — giữa hai mốc giờ
           .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*[-–—]\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
-          // Dấu ~ giữa hai mốc giờ → ### heading với ~
+          // Dấu ~ giữa hai mốc giờ
           .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?\s*~\s*`?(\d{1,2}:\d{2})`?/gi, '### Thời gian | $1 ~ $2')
           // Chỉ một mốc giờ
           .replace(/Thời gian\s*:\s*`?(\d{1,2}:\d{2})`?(?!\s*[~\d:-])/gi, '### Thời gian | $1');
+      };
+      if (newEmb.description) {
+        newEmb.description = normalizeTimeLines(newEmb.description);
+      }
+      // Áp dụng thêm cho field values (nếu "Thời gian" nằm trong field)
+      if (newEmb.fields && newEmb.fields.length > 0) {
+        newEmb.fields = newEmb.fields.map(f => ({
+          ...f,
+          value: normalizeTimeLines(f.value)
+        }));
       }
       return newEmb;
     });
