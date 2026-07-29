@@ -15,7 +15,6 @@
 
 'use strict';
 
-const UsageLimit = require('../models/UsageLimit.js');
 const JoinRecord = require('../models/JoinRecord.js');
 const UserInvite = require('../models/UserInvite.js');
 
@@ -260,7 +259,7 @@ async function handleInviteButton(interaction, guild) {
 
     const embed = {
       color: 0x5865f2,
-      title: '👥 Mời bạn bè nhận thêm lượt thông báo',
+      title: '👥 Mời bạn bè',
       description: [
         'Sao chép liên kết dưới đây và chia sẻ với bạn bè:',
         '',
@@ -268,8 +267,6 @@ async function handleInviteButton(interaction, guild) {
         '',
         `Tiến độ: ${progressVal}/5`,
         `👤 Đã mời thành công: ${doc.joinedCount ?? 0} người`,
-        '',
-        '🎁 Mời đủ 5 người bạn sẽ nhận +500 lượt thông báo.',
       ].join('\n'),
       footer: { text: 'Nếu người được mời rời server, tiến độ sẽ bị trừ lại.' },
     };
@@ -307,21 +304,6 @@ async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
     { $set: { rewardProgress: milestonesEarned } },
   );
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  await UsageLimit.findOneAndUpdate(
-    { guildId, userId: inviterId },
-    {
-      $inc: { remainingUses: bonus },
-      $setOnInsert: {
-        monthlyLimit:         50,
-        lastResetMonth:       currentMonth,
-        pendingInviteRewards: 0,
-        totalInvites:         0,
-      },
-    },
-    { upsert: true },
-  );
-
   _log.success(
     `[Invite] +${bonus} lượt cho ${inviterId} — mốc ${milestonesEarned * 5} active`,
   );
@@ -330,8 +312,7 @@ async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
   try {
     const user = await _botClient.users.fetch(inviterId);
     await user.send(
-      `🎉 Bạn vừa đạt mốc **${inviteDoc.activeCount} người** đang ở lại server!\n` +
-      `**+${bonus} lượt** tùy chỉnh thông báo đã được cộng vào tài khoản của bạn.`,
+      `🎉 Bạn vừa đạt mốc **${inviteDoc.activeCount} người** đang ở lại server! Cảm ơn bạn đã phát triển cộng đồng!`,
     );
   } catch (_) { /* DM bị tắt */ }
 
@@ -345,9 +326,7 @@ async function _checkAndAwardMilestone(guildId, inviterId, inviteDoc) {
         description: [
           `👤 Người dùng: <@${inviterId}>`,
           `👥 Đã mời thành công: 05 người`,
-          `🎁 Phần thưởng: +500 lượt thông báo`,
-          '',
-          'Cảm ơn bạn đã đồng hành và phát triển cộng đồng. Hãy tiếp tục mời thêm bạn bè để nhận nhiều lượt sử dụng hơn nhé!',
+          'Cảm ơn bạn đã đồng hành và phát triển cộng đồng!',
         ].join('\n'),
       };
       await publicChannel.send({ embeds: [publicEmbed] });

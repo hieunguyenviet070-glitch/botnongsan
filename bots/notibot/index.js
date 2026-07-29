@@ -4,7 +4,6 @@ const { Client: BotClient, MessageActionRow, MessageButton, MessageSelectMenu } 
 const fs = require('fs');
 const path = require('path');
 const { connectDB } = require('./db.js');
-const UsageLimit = require('./models/UsageLimit.js');
 const JoinRecord = require('./models/JoinRecord.js');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const colors = {
@@ -92,10 +91,6 @@ const lastSentMessages = new Map();
 // Map<guildId, Map<inviteCode, uses:number>>  — for invite tracking
 const inviteCache = new Map();
 
-// ─── Role-based usage limits (bypass roles managed in MongoDB) ───────────────
-const { getUserLimit, ROLE_LIMITS, DEFAULT_LIMIT } = require('./utils/usageUtils.js');
-const { revokeNotificationRoles } = require('./utils/roleRevoke.js');
-const { handleUsageCommand } = require('./listeners/usageCommands.js');
 const { handleReminderEmbed } = require('./listeners/reminderEmbed.js');
 const inviteSystem = require('./listeners/inviteSystem.js');
 const UserInvite = require('./models/UserInvite.js');
@@ -1420,55 +1415,6 @@ async function registerSlashCommands(guild) {
         description: 'Mở menu cấu hình nhận thông báo Play Together'
       },
       {
-        name: 'usage',
-        description: 'Quản lý lượt sử dụng tùy chỉnh thông báo (Admin)',
-        options: [
-          {
-            type: 1, name: 'check', description: 'Kiểm tra lượt sử dụng của người dùng',
-            options: [{ type: 6, name: 'user', description: 'Người dùng cần kiểm tra', required: true }]
-          },
-          {
-            type: 1, name: 'add', description: 'Cộng thêm lượt sử dụng',
-            options: [
-              { type: 6, name: 'user', description: 'Người dùng', required: true },
-              { type: 4, name: 'amount', description: 'Số lượt cần cộng', required: true, minValue: 1 }
-            ]
-          },
-          {
-            type: 1, name: 'remove', description: 'Trừ lượt sử dụng',
-            options: [
-              { type: 6, name: 'user', description: 'Người dùng', required: true },
-              { type: 4, name: 'amount', description: 'Số lượt cần trừ', required: true, minValue: 1 }
-            ]
-          },
-          {
-            type: 1, name: 'set', description: 'Đặt số lượt còn lại',
-            options: [
-              { type: 6, name: 'user', description: 'Người dùng', required: true },
-              { type: 4, name: 'amount', description: 'Số lượt', required: true, minValue: 0 }
-            ]
-          },
-          {
-            type: 1, name: 'reset', description: 'Reset lượt về mức giới hạn tháng của người dùng',
-            options: [{ type: 6, name: 'user', description: 'Người dùng cần reset', required: true }]
-          },
-          {
-            type: 2, name: 'bypass', description: 'Quản lý Role không giới hạn',
-            options: [
-              {
-                type: 1, name: 'add', description: 'Thêm Role vào danh sách không giới hạn',
-                options: [{ type: 8, name: 'role', description: 'Role cần thêm', required: true }]
-              },
-              {
-                type: 1, name: 'remove', description: 'Xóa Role khỏi danh sách không giới hạn',
-                options: [{ type: 8, name: 'role', description: 'Role cần xóa', required: true }]
-              },
-              { type: 1, name: 'list', description: 'Xem danh sách Role không giới hạn' }
-            ]
-          }
-        ]
-      },
-      {
         name: 'creator',
         description: 'Thêm nhà quảng bá với link invite riêng (Admin)',
         options: [{ type: 6, name: 'user', description: 'Người dùng cần thêm làm Creator', required: true }]
@@ -1523,9 +1469,7 @@ botClient.on('interactionCreate', async (interaction) => {
       return;
     }
     if (interaction.isCommand()) {
-      if (interaction.commandName === 'usage') {
-        await handleUsageCommand(interaction, guild, member);
-      } else if (interaction.commandName === 'creator') {
+      if (interaction.commandName === 'creator') {
         await handleCreatorCommand(interaction, guild);
       } else if (interaction.commandName === 'creator-stats') {
         await handleCreatorStats(interaction, guild);
@@ -1596,66 +1540,6 @@ botClient.on('interactionCreate', async (interaction) => {
       }
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
-        // --- Kiểm tra giới hạn sử dụng hàng tháng ---
-        const userLimit = await getUserLimit(member);
-        // Unlimited roles: bỏ qua hoàn toàn, mở panel ngay
-        if (userLimit !== Infinity) {
-          let usageDoc = null;
-          try {
-            const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-            usageDoc = await UsageLimit.findOneAndUpdate(
-              { guildId: guild.id, userId: interaction.user.id },
-              { $setOnInsert: { remainingUses: userLimit, monthlyLimit: userLimit, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
-              { upsert: true, new: true }
-            );
-            // Đồng bộ monthlyLimit nếu role đã thay đổi
-            if (usageDoc.monthlyLimit !== userLimit) {
-              usageDoc = await UsageLimit.findOneAndUpdate(
-                { guildId: guild.id, userId: interaction.user.id },
-                { $set: { monthlyLimit: userLimit } },
-                { new: true }
-              );
-            }
-            // Reset đầu tháng nếu cần
-            if (usageDoc.lastResetMonth !== currentMonth) {
-              usageDoc = await UsageLimit.findOneAndUpdate(
-                { guildId: guild.id, userId: interaction.user.id },
-                { $set: { remainingUses: usageDoc.monthlyLimit, lastResetMonth: currentMonth } },
-                { new: true }
-              );
-            }
-          } catch (dbErr) {
-            log.error('Lỗi MongoDB khi kiểm tra giới hạn sử dụng:', dbErr.message);
-          }
-          if (usageDoc && usageDoc.remainingUses <= 0) {
-            const limitEmbed = {
-              color: 0xe74c3c,
-              title: '❌ Đã hết lượt tùy chỉnh tháng này',
-              description: [
-                `Bạn đã dùng hết ${usageDoc.monthlyLimit} lượt thông báo trong tháng này.`,
-                '',
-                'Cách mở khóa thêm lượt:',
-                '• 💸 Donate — nhận thêm lượt ngay lập tức',
-                '• 👥 Mời bạn bè — mời 5 người bạn = +500 lượt',
-                '',
-                '🔄 Lượt thông báo sẽ được làm mới vào đầu tháng sau.',
-              ].join('\n'),
-              footer: { text: `Lượt còn lại: 0 / ${usageDoc.monthlyLimit}` }
-            };
-            const limitRow = new MessageActionRow().addComponents(
-              new MessageButton()
-                .setLabel('💸 Donate')
-                .setStyle('LINK')
-                .setURL('https://discord.com/channels/1363986043509932093/1514934088870662184'),
-              new MessageButton()
-                .setCustomId('setup_limit_invite')
-                .setLabel('👥 Mời bạn bè')
-                .setStyle('PRIMARY')
-            );
-            return interaction.reply({ embeds: [limitEmbed], components: [limitRow], ephemeral: true });
-          }
-        }
-        // --- Hết kiểm tra ---
         const rows = buildSetupComponents(member);
         await interaction.reply({
           components: rows,
@@ -1691,8 +1575,6 @@ botClient.on('interactionCreate', async (interaction) => {
           embeds: [],
           components: rows
         });
-      } else if (interaction.customId === 'setup_limit_invite') {
-        return inviteSystem.handleInviteButton(interaction, guild);
       } else if (interaction.customId === 'setup_all_notifs') {
         await interaction.deferUpdate();
         const mainKeys = ['main_seed', 'main_weather', 'main_tool', 'main_refresh'];
@@ -1953,11 +1835,6 @@ async function forwardMessage(message, mapping) {
       if (payload.content) {
         const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
         await sendPing(payload.content, taggedRoleIds);
-        if (taggedRoleIds.length > 0 && targetGuild) {
-          deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
-            log.error('Lỗi khi trừ lượt sử dụng:', err.message)
-          );
-        }
       }
 
       // Gửi embed không có content
@@ -1970,11 +1847,6 @@ async function forwardMessage(message, mapping) {
       const sentMessage = await targetChannel.send(payload);
       if (payload.content) {
         const taggedRoleIds = (payload.content.match(/<@&(\d+)>/g) || []).map(m => m.replace(/<@&(\d+)>/, '$1'));
-        if (taggedRoleIds.length > 0 && targetGuild) {
-          deductUsageForRoles(targetGuild, taggedRoleIds).catch(err =>
-            log.error('Lỗi khi trừ lượt sử dụng:', err.message)
-          );
-        }
         setTimeout(async () => {
           try {
             await sentMessage.edit({ content: null });
@@ -1989,74 +1861,7 @@ async function forwardMessage(message, mapping) {
   }
 }
 
-/**
- * Trừ 1 lượt sử dụng cho mỗi thành viên đang có ít nhất một trong các role được tag.
- * Chạy bất đồng bộ — không block việc gửi tin nhắn.
- */
-async function deductUsageForRoles(guild, roleIds) {
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  // Fetch all guild members into cache (needed to read their roles)
-  try {
-    await guild.members.fetch({ force: false });
-  } catch (_) { /* ignore */ }
-  // Collect unique GuildMember objects across all tagged roles
-  const affectedMembers = new Map(); // userId → GuildMember
-  for (const roleId of roleIds) {
-    const role = guild.roles.cache.get(roleId);
-    if (!role) continue;
-    role.members.forEach(m => affectedMembers.set(m.id, m));
-  }
-  if (affectedMembers.size === 0) return;
-  for (const [userId, guildMember] of affectedMembers) {
-    try {
-      const userLimit = await getUserLimit(guildMember);
-      // Unlimited roles: bỏ qua hoàn toàn
-      if (userLimit === Infinity) continue;
-      // Upsert với đúng limit của user
-      let doc = await UsageLimit.findOneAndUpdate(
-        { guildId: guild.id, userId },
-        { $setOnInsert: { remainingUses: userLimit, monthlyLimit: userLimit, lastResetMonth: currentMonth, pendingInviteRewards: 0, totalInvites: 0 } },
-        { upsert: true, new: true }
-      );
-      // Đồng bộ monthlyLimit nếu role người dùng đã thay đổi
-      if (doc.monthlyLimit !== userLimit) {
-        doc = await UsageLimit.findOneAndUpdate(
-          { guildId: guild.id, userId },
-          { $set: { monthlyLimit: userLimit } },
-          { new: true }
-        );
-      }
-      // Reset đầu tháng nếu cần
-      if (doc.lastResetMonth !== currentMonth) {
-        doc = await UsageLimit.findOneAndUpdate(
-          { guildId: guild.id, userId },
-          { $set: { remainingUses: doc.monthlyLimit, lastResetMonth: currentMonth } },
-          { new: true }
-        );
-      }
-      if (doc.remainingUses > 0) {
-        const updated = await UsageLimit.findOneAndUpdate(
-          { guildId: guild.id, userId },
-          { $inc: { remainingUses: -1 } },
-          { returnDocument: 'after' }
-        );
-        // Khi về 0: đảm bảo không âm, gỡ role và gửi DM
-        if (updated && updated.remainingUses <= 0) {
-          if (updated.remainingUses < 0) {
-            await UsageLimit.updateOne({ guildId: guild.id, userId }, { $set: { remainingUses: 0 } });
-          }
-          log.info(`Người dùng ${userId} hết lượt — đang gỡ role thông báo...`);
-          revokeNotificationRoles(guildMember).catch(err =>
-            log.error(`Lỗi khi gỡ role thông báo cho ${userId}:`, err.message)
-          );
-        }
-      }
-    } catch (err) {
-      log.error(`Lỗi khi trừ lượt sử dụng cho ${userId}:`, err.message);
-    }
-  }
-}
-// ─── Invite tracking & usage deduction on member join/leave ─────────────────
+// ─── Invite tracking on member join/leave ────────────────────────────────────
 
 botClient.on('messageCreate', (message) => handleReminderEmbed(message).catch(() => {}));
 
