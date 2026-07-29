@@ -509,7 +509,7 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, targetChannel
     };
   }
   if (targetChannelId === '1522313809123868813' && category === 'Nông Cụ') {
-    const description = `### ${npcEmoji} ${authorName} ###\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
+    const description = `## ${npcEmoji} ${authorName}\n` + formattedItems.join('\n') + `\n\n**Thời gian bán︱${startTimeFormatted} ~ ${endTimeFormatted}**`;
     return {
       description: description,
       color: embedColor
