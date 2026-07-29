@@ -206,6 +206,17 @@ const emojiFallbacks = {
   'box': '📦',
   'chest': '📦'
 };
+// Parse "<:name:id>" hoặc "<a:name:id>" → { name, id, animated }
+function parseEmojiTag(tag) {
+  if (!tag || typeof tag !== 'string') return null;
+  const match = tag.match(/^<(a?):([^:]+):(\d+)>$/);
+  if (!match) return null;
+  return { animated: match[1] === 'a', name: match[2], id: match[3] };
+}
+// Lấy emoji object cho seedOptions từ emojis.json
+function seedEmoji(key) {
+  return parseEmojiTag(emojiConfig.emojis && emojiConfig.emojis[key]) || undefined;
+}
 function getFallbackEmoji(name) {
   const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (emojiFallbacks[normalized]) {
@@ -1114,22 +1125,23 @@ const roleDefinitions = {
   'main_refresh': { name: 'Thời Gian Làm Mới', key: 'Thời Gian Làm Mới' }
 };
 const seedOptions = [
-  { label: 'Xương rồng', value: 'cactus', emoji: { id: '1531990343657062520', name: 'Xuong_rong', animated: true } },
-  { label: 'Táo', value: 'apple', emoji: { id: '1531990494878498877', name: 'tao', animated: true } },
-  { label: 'Nho', value: 'grape', emoji: { id: '1531990650134859948', name: 'nho', animated: true } },
-  { label: 'Bí ngô', value: 'pumpkin', emoji: { id: '1531990996957659166', name: 'bi_ngo', animated: true } },
-  { label: 'Dưa hấu', value: 'watermelon', emoji: { id: '1531990424791679018', name: 'duahau', animated: true } },
-  { label: 'Dừa', value: 'coconut', emoji: { id: '1531990962962956399', name: 'dua', animated: true } },
-  { label: 'Xoài', value: 'mango', emoji: { id: '1531990383695757444', name: 'xoai', animated: true } },
-  { label: 'Đậu', value: 'bean', emoji: { id: '1531990918952124556', name: 'dau', animated: true } },
-  { label: 'Khế', value: 'starfruit', emoji: { id: '1532090006703964270', name: 'khecowaezgifcomresize', animated: true } },
-  { label: 'Táo đường', value: 'custard_apple', emoji: { id: '1532046281914974329', name: 'tao_duong', animated: true } },
-  { label: 'Đu đủ', value: 'papaya', emoji: { id: '1532049208067231956', name: 'du_du', animated: true } },
-  { label: 'Mãng cầu', value: 'mangcau', emoji: { id: '1532048895943643446', name: 'mang_cau', animated: true } },
-  { label: 'Anh đào', value: 'cherry', emoji: { id: '1532053796639867011', name: 'anh_dao', animated: true } },
-  { label: 'Cẩm tú cầu', value: 'hydrangea', emoji: { id: '1532094525860745427', name: 'tucau', animated: true } },
-  { label: 'Hoa loa kèn', value: 'lily', emoji: { id: '1531990740169658491', name: 'loa_ken', animated: true } },
-  { label: 'Hoa hồng', value: 'rose', emoji: { id: '1531990782490181692', name: 'hoa_hong', animated: true } }
+  // Emoji đọc từ emojis.json — chỉ cần sửa emojis.json để đổi emoji, không cần sửa file này
+  { label: 'Xương rồng',  value: 'cactus',        emoji: seedEmoji('cactus') },
+  { label: 'Táo',         value: 'apple',          emoji: seedEmoji('apple') },
+  { label: 'Nho',         value: 'grape',          emoji: seedEmoji('grape') },
+  { label: 'Bí ngô',      value: 'pumpkin',        emoji: seedEmoji('pumpkin') },
+  { label: 'Dưa hấu',    value: 'watermelon',     emoji: seedEmoji('watermelon') },
+  { label: 'Dừa',         value: 'coconut',        emoji: seedEmoji('coconut') },
+  { label: 'Xoài',        value: 'mango',          emoji: seedEmoji('mango') },
+  { label: 'Đậu',         value: 'bean',           emoji: seedEmoji('bean') },
+  { label: 'Khế',         value: 'starfruit',      emoji: seedEmoji('starfruit') },
+  { label: 'Táo đường',  value: 'custard_apple',  emoji: seedEmoji('custard_apple') },
+  { label: 'Đu đủ',      value: 'papaya',         emoji: seedEmoji('papaya') },
+  { label: 'Mãng cầu',   value: 'mangcau',        emoji: seedEmoji('mangcau') },
+  { label: 'Anh đào',    value: 'cherry',         emoji: seedEmoji('cherry') },
+  { label: 'Cẩm tú cầu', value: 'hydrangea',      emoji: seedEmoji('hydrangea') },
+  { label: 'Hoa loa kèn', value: 'lily',           emoji: seedEmoji('lily') },
+  { label: 'Hoa hồng',   value: 'rose',           emoji: seedEmoji('rose') },
 ];
 const weatherOptions = [
   { label: 'Trời Sáng', value: 'normal_day', emoji: '<:emoji_113:1523956231805599764>' },
