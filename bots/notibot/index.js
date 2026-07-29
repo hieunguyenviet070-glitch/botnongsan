@@ -1147,9 +1147,9 @@ const weatherOptions = [
   { label: 'Sóng điện từ', value: 'electromagnetic', emoji: '<:songdientu:1523874917890789497>' }
 ];
 const toolOptions = [
-  { label: 'Vòi Tưới Thường', value: 'normal_watering_can', emoji: '<:voituoithuong:1523877007178338304>' },
-  { label: 'Vòi Tưới Cao Cấp', value: 'advanced_watering_can', emoji: '<:voituoicaocao:1523877077315620894>' },
-  { label: 'Vòi Tưới Siêu Cao Cấp', value: 'expert_watering_can', emoji: '<:voituoisieucaocap:1523878935144829100>' }
+  { label: 'Vòi Tưới Thường', value: 'normal_watering_can', emoji: { id: '1532041549721108630', name: 'voi_xanh', animated: true } },
+  { label: 'Vòi Tưới Cao Cấp', value: 'advanced_watering_can', emoji: { id: '1531990612734251090', name: 'voi_xanh', animated: true } },
+  { label: 'Vòi Tưới Siêu Cao Cấp', value: 'expert_watering_can', emoji: { id: '1531990577728720996', name: 'voi_do', animated: true } }
 ];
 const refreshOptions = [
   { label: 'Đơn hàng', value: 'refresh_order', emoji: '<:Order:1523883533326749786>' },
