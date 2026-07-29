@@ -1831,6 +1831,10 @@ async function forwardMessage(message, mapping) {
   if (mapping.targetChannelId === '1522391343534440478' && payload && payload.embeds) {
     payload.embeds = payload.embeds.map(emb => {
       let newEmb = { ...emb, color: 0xED4245 };
+      // Thêm thumbnail cho embed "Đơn hàng đã được làm mới"
+      if ((newEmb.title || '').includes('Đơn hàng đã được làm mới')) {
+        newEmb.thumbnail = { url: 'https://media.discordapp.net/stickers/1532096361980494035.webp?size=160&quality=lossless' };
+      }
       if (newEmb.title) {
         const titleText = newEmb.title;
         const currentDesc = newEmb.description || '';
