@@ -1839,6 +1839,10 @@ async function forwardMessage(message, mapping) {
       if ((newEmb.title || '').includes('Cửa hàng nội thất đã được làm mới')) {
         newEmb.thumbnail = { url: 'https://media.discordapp.net/stickers/1532096752289579078.webp?size=160&quality=lossless' };
       }
+      // Thêm thumbnail cho embed "Cửa hàng nông cụ đã được làm mới"
+      if ((newEmb.title || '').includes('Cửa hàng nông cụ đã được làm mới')) {
+        newEmb.thumbnail = { url: 'https://media.discordapp.net/stickers/1532113198118076691.webp?size=160&quality=lossless' };
+      }
       if (newEmb.title) {
         const titleText = newEmb.title;
         const currentDesc = newEmb.description || '';
