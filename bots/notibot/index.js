@@ -613,7 +613,7 @@ function formatEmbedTitle(title, sourceMessage) {
     return '<:Order:1523883533326749786> Đơn hàng đã được làm mới';
   }
   if ((lower.includes('cửa hàng nội thất') || lower.includes('nội thất')) && (lower.includes('làm mới') || lower.includes('đã được làm mới'))) {
-    return '<:emoji_114:1523977828830412810> Cửa hàng nội thất đã được làm mới';
+    return '<:cuahangnoithat:1532334875137413230> Cửa hàng nội thất đã được làm mới';
   }
   return insertItemEmojis(mapCustomEmojis(cleaned, sourceMessage));
 }
@@ -1162,7 +1162,7 @@ const toolOptions = [
 ];
 const refreshOptions = [
   { label: 'Đơn Hàng',          value: 'refresh_order',     emoji: '<:Order:1523883533326749786>' },
-  { label: 'Cửa Hàng Nội Thất', value: 'refresh_furniture', emoji: '<:emoji_114:1523977828830412810>' },
+  { label: 'Cửa Hàng Nội Thất', value: 'refresh_furniture', emoji: '<:cuahangnoithat:1532334875137413230>' },
   { label: 'Cửa Hàng Nông Cụ',  value: 'refresh_toolshop',  emoji: '<:Toolshop:1523883603484872905>' }
 ];
 const mainOptions = [
