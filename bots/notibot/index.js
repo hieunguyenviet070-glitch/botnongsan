@@ -1938,6 +1938,18 @@ client.on('error', (error) => {
 botClient.on('error', (error) => {
   log.error('Đã xảy ra lỗi kết nối Discord Bot Client:', error);
 });
+// ── Health check server (chỉ chạy trong production) ───────────────
+if (process.env.NODE_ENV === 'production') {
+  const http = require('http');
+  const PORT = process.env.PORT || 8080;
+  http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', bot: 'notibot' }));
+  }).listen(PORT, () => {
+    log.info(`Health server đang lắng nghe trên cổng ${PORT}`);
+  });
+}
+
 process.on('unhandledRejection', (reason, promise) => {
   log.error('Có lỗi chưa được xử lý trong Promise:', reason);
 });
