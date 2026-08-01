@@ -1,52 +1,59 @@
-# Notibot
+# Notibot — Discord Selfbot → Official Bot Forwarder
 
-A Discord selfbot → official bot forwarder for the "Play Together" game community. Monitors game notification channels (seeds, weather, tools shop, refresh timers) on a source server and forwards them — reformatted with custom embeds and role pings — to a target server.
-
-## Run & Operate
-
-- **Notibot** is run via the `Notibot` workflow: `pnpm --filter @workspace/notibot run dev` (runs `node index.js` in `bots/notibot/`)
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000, scaffolding only)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string (API server only)
-
-## Required Secrets (Notibot)
-
-- `DISCORD_TOKEN` — Discord user account token (selfbot that reads source channels)
-- `BOT_TOKEN` — Official Discord bot token (sends messages to target channels)
-- `MONGODB_URI` — MongoDB connection string (usage limits and join records)
+A Vietnamese Discord bot for the **Play Together** game community. It reads messages from a selfbot account (user account) on source channels and forwards them via an official Discord bot to target channels. Includes an invite-tracking system, reminder embeds, and a slash-command setup panel.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Runtime:** Node.js (CommonJS)
+- **Discord selfbot:** `discord.js-selfbot-v13`
+- **Official bot:** `discord.js` v13
+- **Database:** MongoDB via Mongoose
+- **Package manager:** pnpm (workspace package `@workspace/notibot`)
 
-## Where things live
+## How to run
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+The workflow **Notibot** starts the bot automatically:
 
-## Architecture decisions
+```
+pnpm --filter @workspace/notibot run dev
+```
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+## Required secrets
 
-## Product
+Set these in Replit Secrets before starting:
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+| Secret | Description |
+|---|---|
+| `DISCORD_TOKEN` | Discord user account token (selfbot) |
+| `BOT_TOKEN` | Official Discord bot token |
+| `MONGODB_URI` | MongoDB connection string |
+
+Optional:
+- `ADMIN_IDS` — comma-separated Discord user IDs for bot admins (defaults to a hardcoded ID in `setup.js`)
+
+## Configuration
+
+Edit `bots/notibot/config.json` to set:
+
+- `channelMappings` — source → target channel pairs (with optional webhook URLs), typed as `seeds`, `weather`, `tools`, or `refresh`
+- `targetGuildId` — your Discord server ID
+- `setupChannelId` — channel where the slash-command setup panel is posted
+- Other flags: `ignoreBots`, `preventPings`, `messageDelay`, etc.
+
+Edit `bots/notibot/emojis.json` to customize seed/weather/tool emojis and role IDs without touching the main code.
+
+## Project structure
+
+```
+bots/notibot/
+  index.js          # Main bot logic
+  setup.js          # Token/admin config (reads from env)
+  db.js             # MongoDB connection
+  config.json       # Channel mappings and server config
+  emojis.json       # Emoji and role ID mappings
+  models/           # Mongoose models (Creator, JoinRecord, UserInvite)
+  listeners/        # Event listeners (inviteSystem, reminderEmbed)
+  scripts/          # Utility scripts (reset-channel, send-rules)
+```
 
 ## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
