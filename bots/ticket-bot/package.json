@@ -1,0 +1,15 @@
+{
+  "name": "@workspace/ticket-bot",
+  "version": "1.0.0",
+  "description": "Discord Ticket System cho PlayHub",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.4.2"
+  }
+}

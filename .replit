@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "Notibot"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Ticket Bot"
+
 [[workflows.workflow]]
 name = "Notibot"
 author = "agent"
@@ -27,6 +31,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/notibot run dev"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Ticket Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/ticket-bot run dev"
 
 [workflows.workflow.metadata]
 outputType = "console"
