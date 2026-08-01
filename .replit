@@ -1,8 +1,8 @@
 modules = ["web", "nodejs-20", "bash"]
 
 [deployment]
-router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
+run = ["pnpm", "--filter", "@workspace/notibot", "run", "start"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
