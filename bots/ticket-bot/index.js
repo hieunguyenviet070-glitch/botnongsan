@@ -7,7 +7,7 @@ const {
   PermissionsBitField, ChannelType
 } = require('discord.js');
 
-const TOKEN          = process.env.TOKEN;
+const TOKEN          = process.env.TOKEN || process.env.BOT_TOKEN;
 const CLIENT_ID      = process.env.CLIENT_ID;
 const MANAGER_ROLE   = process.env.MANAGER_ROLE_ID;
 
