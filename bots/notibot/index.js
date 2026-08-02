@@ -487,11 +487,11 @@ function formatShopEmbedIfMatches(rawText, category, botAvatarUrl, channelType) 
   let embedColor = 0x2b2d31;
   if (category === 'Hạt Giống') {
     npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_seedshop']) ? emojiConfig.emojis['npc_seedshop'] : '<:hatgiong:1523885555170017312>';
-    authorName = 'Hạt giống đang bán';
+    authorName = 'Hạt giống đang được bán';
     embedColor = 0x2ecc71;
   } else if (category === 'Nông Cụ') {
     npcEmoji = (emojiConfig.emojis && emojiConfig.emojis['npc_toolshop']) ? emojiConfig.emojis['npc_toolshop'] : '<:congcu:1523885700737400892>';
-    authorName = 'Nông cụ đang bán';
+    authorName = 'Nông cụ đang được bán';
     embedColor = 0x3498db;
   }
   let authorIconUrl = null;
