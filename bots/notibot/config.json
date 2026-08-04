@@ -35,5 +35,14 @@
   "messageDelay": 1000,
   "messageTemplate": "{content}",
   "exemptRoleIds": [],
-  "roleLimits": []
+  "roleLimits": [
+    {
+      "roleId": "1512094611030544388",
+      "amount": 100
+    },
+    {
+      "roleId": "1516650162083205271",
+      "amount": 300
+    }
+  ]
 }

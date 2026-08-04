@@ -1416,15 +1416,12 @@ async function handleUsageAdd(interaction, guild) {
   await interaction.deferReply({ ephemeral: true });
   const target = interaction.options.getUser('user');
   const amount = interaction.options.getInteger('amount');
-  const now    = new Date();
+  // Đảm bảo document tồn tại trước khi cộng
+  await getOrCreateUsageLimit(guild.id, target.id);
   const doc = await UsageLimit.findOneAndUpdate(
     { guildId: guild.id, userId: target.id },
-    [{ $set: {
-      uses:                    { $add: [{ $ifNull: ['$uses', 100] }, amount] },
-      lastReset:               { $ifNull: ['$lastReset', now] },
-      inviteMilestonesAwarded: { $ifNull: ['$inviteMilestonesAwarded', 0] },
-    }}],
-    { upsert: true, new: true },
+    { $inc: { uses: amount } },
+    { new: true },
   );
   log.info(`[UsageLimit] Admin ${interaction.user.tag} cộng +${amount} lượt cho ${target.tag} → còn ${doc.uses}`);
   return interaction.editReply({ embeds: [{ color: 0x2ecc71,
@@ -1438,15 +1435,12 @@ async function handleUsageRemove(interaction, guild) {
   await interaction.deferReply({ ephemeral: true });
   const target = interaction.options.getUser('user');
   const amount = interaction.options.getInteger('amount');
-  const now    = new Date();
+  // Đảm bảo document tồn tại trước khi trừ
+  await getOrCreateUsageLimit(guild.id, target.id);
   const doc = await UsageLimit.findOneAndUpdate(
     { guildId: guild.id, userId: target.id },
-    [{ $set: {
-      uses:                    { $subtract: [{ $ifNull: ['$uses', 100] }, amount] },
-      lastReset:               { $ifNull: ['$lastReset', now] },
-      inviteMilestonesAwarded: { $ifNull: ['$inviteMilestonesAwarded', 0] },
-    }}],
-    { upsert: true, new: true },
+    { $inc: { uses: -amount } },
+    { new: true },
   );
   log.info(`[UsageLimit] Admin ${interaction.user.tag} trừ -${amount} lượt của ${target.tag} → còn ${doc.uses}`);
   return interaction.editReply({ embeds: [{ color: 0xe74c3c,
