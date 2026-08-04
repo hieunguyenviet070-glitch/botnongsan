@@ -1810,6 +1810,11 @@ async function revokeNotifRolesOnLimit(guild, userId) {
       { $set: { uses: 0 } },
     );
 
+    // Thêm role 1523957712222818414 vào danh sách gỡ nếu member đang có
+    if (member.roles.cache.has('1523957712222818414')) {
+      toRemove.push('1523957712222818414');
+    }
+
     if (toRemove.length > 0) {
       try { await member.roles.remove(toRemove); } catch (e) {
         log.warn(`[UsageLimit] Không thể gỡ role của ${userId}: ${e.message}`);
