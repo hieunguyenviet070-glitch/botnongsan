@@ -1407,6 +1407,100 @@ async function handleCreatorReset(interaction, guild) {
     description: `Đã đặt lại số lượt join của **${result.modifiedCount}** Creator về **0**.\n_Link invite được giữ nguyên._` }] });
 }
 
+// ─── UsageLimit admin commands ────────────────────────────────────────────────
+
+async function handleUsageAdd(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const target = interaction.options.getUser('user');
+  const amount = interaction.options.getInteger('amount');
+  const now    = new Date();
+  const doc = await UsageLimit.findOneAndUpdate(
+    { guildId: guild.id, userId: target.id },
+    [{ $set: {
+      uses:                    { $add: [{ $ifNull: ['$uses', 100] }, amount] },
+      lastReset:               { $ifNull: ['$lastReset', now] },
+      inviteMilestonesAwarded: { $ifNull: ['$inviteMilestonesAwarded', 0] },
+    }}],
+    { upsert: true, new: true },
+  );
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} cộng +${amount} lượt cho ${target.tag} → còn ${doc.uses}`);
+  return interaction.editReply({ embeds: [{ color: 0x2ecc71,
+    description: `✅ Đã cộng **+${amount}** lượt cho <@${target.id}>.\n📊 Hiện tại còn: **${doc.uses} lượt**` }] });
+}
+
+async function handleUsageRemove(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const target = interaction.options.getUser('user');
+  const amount = interaction.options.getInteger('amount');
+  const now    = new Date();
+  const doc = await UsageLimit.findOneAndUpdate(
+    { guildId: guild.id, userId: target.id },
+    [{ $set: {
+      uses:                    { $subtract: [{ $ifNull: ['$uses', 100] }, amount] },
+      lastReset:               { $ifNull: ['$lastReset', now] },
+      inviteMilestonesAwarded: { $ifNull: ['$inviteMilestonesAwarded', 0] },
+    }}],
+    { upsert: true, new: true },
+  );
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} trừ -${amount} lượt của ${target.tag} → còn ${doc.uses}`);
+  return interaction.editReply({ embeds: [{ color: 0xe74c3c,
+    description: `✅ Đã trừ **-${amount}** lượt của <@${target.id}>.\n📊 Hiện tại còn: **${doc.uses} lượt**` }] });
+}
+
+async function handleUsageExemptAdd(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  const role = interaction.options.getRole('role');
+  if (!config.exemptRoleIds) config.exemptRoleIds = [];
+  if (config.exemptRoleIds.includes(role.id)) {
+    return interaction.reply({ embeds: [{ color: 0xf39c12,
+      description: `ℹ️ Role <@&${role.id}> đã có trong danh sách miễn giới hạn rồi.` }], ephemeral: true });
+  }
+  config.exemptRoleIds.push(role.id);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} thêm exempt role: ${role.name} (${role.id})`);
+  return interaction.reply({ embeds: [{ color: 0x2ecc71,
+    description: `✅ Đã thêm <@&${role.id}> vào danh sách **miễn giới hạn**.\nThành viên có role này sẽ không bị giới hạn lượt sử dụng.` }], ephemeral: true });
+}
+
+async function handleUsageExemptRemove(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  const role = interaction.options.getRole('role');
+  if (!config.exemptRoleIds) config.exemptRoleIds = [];
+  const idx = config.exemptRoleIds.indexOf(role.id);
+  if (idx === -1) {
+    return interaction.reply({ embeds: [{ color: 0xf39c12,
+      description: `ℹ️ Role <@&${role.id}> không có trong danh sách miễn giới hạn.` }], ephemeral: true });
+  }
+  config.exemptRoleIds.splice(idx, 1);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} xóa exempt role: ${role.name} (${role.id})`);
+  return interaction.reply({ embeds: [{ color: 0xe74c3c,
+    description: `✅ Đã xóa <@&${role.id}> khỏi danh sách miễn giới hạn.` }], ephemeral: true });
+}
+
+async function handleUsageExemptList(interaction, guild) {
+  const exemptRoleIds = config.exemptRoleIds || [];
+  if (exemptRoleIds.length === 0) {
+    return interaction.reply({ embeds: [{ color: 0x95a5a6,
+      description: 'ℹ️ Chưa có role nào được miễn giới hạn lượt sử dụng.' }], ephemeral: true });
+  }
+  const lines = exemptRoleIds.map((id, i) => `**${i + 1}.** <@&${id}>`).join('\n');
+  return interaction.reply({ embeds: [{ color: 0x5865f2,
+    title: '🛡️ Danh sách role miễn giới hạn',
+    description: lines,
+    footer: { text: `Tổng: ${exemptRoleIds.length} role` } }], ephemeral: true });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 async function registerSlashCommands(guild) {
   try {
@@ -1427,6 +1521,40 @@ async function registerSlashCommands(guild) {
       {
         name: 'creator-reset',
         description: 'Reset số lượt join của tất cả Creator về 0 (Admin)'
+      },
+      {
+        name: 'usage-add',
+        description: 'Cộng thêm lượt sử dụng cho một người dùng (Admin)',
+        options: [
+          { type: 6, name: 'user',   description: 'Người dùng cần cộng lượt', required: true },
+          { type: 4, name: 'amount', description: 'Số lượt cần cộng thêm',    required: true, min_value: 1 }
+        ]
+      },
+      {
+        name: 'usage-remove',
+        description: 'Trừ lượt sử dụng của một người dùng (Admin)',
+        options: [
+          { type: 6, name: 'user',   description: 'Người dùng cần trừ lượt', required: true },
+          { type: 4, name: 'amount', description: 'Số lượt cần trừ',         required: true, min_value: 1 }
+        ]
+      },
+      {
+        name: 'usage-exempt-add',
+        description: 'Thêm role được miễn giới hạn lượt sử dụng (Admin)',
+        options: [
+          { type: 8, name: 'role', description: 'Role cần miễn giới hạn', required: true }
+        ]
+      },
+      {
+        name: 'usage-exempt-remove',
+        description: 'Xóa role khỏi danh sách miễn giới hạn (Admin)',
+        options: [
+          { type: 8, name: 'role', description: 'Role cần xóa khỏi danh sách miễn', required: true }
+        ]
+      },
+      {
+        name: 'usage-exempt-list',
+        description: 'Xem danh sách tất cả role được miễn giới hạn lượt sử dụng'
       }
     ];
     if (guild.commands) {
@@ -1490,10 +1618,15 @@ async function getOrCreateUsageLimit(guildId, userId) {
  */
 async function deductUsageLimitForRoles(guild, roleIds) {
   try {
+    const exemptRoleIds = config.exemptRoleIds || [];
     const affectedUserIds = new Set();
     for (const roleId of roleIds) {
       const role = guild.roles.cache.get(roleId);
-      if (role) role.members.forEach(m => { if (!m.user.bot) affectedUserIds.add(m.id); });
+      if (role) role.members.forEach(m => {
+        if (m.user.bot) return;
+        const isExempt = exemptRoleIds.length > 0 && m.roles.cache.some(r => exemptRoleIds.includes(r.id));
+        if (!isExempt) affectedUserIds.add(m.id);
+      });
     }
     if (!affectedUserIds.size) return;
 
@@ -1536,6 +1669,16 @@ botClient.on('interactionCreate', async (interaction) => {
         await handleCreatorStats(interaction, guild);
       } else if (interaction.commandName === 'creator-reset') {
         await handleCreatorReset(interaction, guild);
+      } else if (interaction.commandName === 'usage-add') {
+        await handleUsageAdd(interaction, guild);
+      } else if (interaction.commandName === 'usage-remove') {
+        await handleUsageRemove(interaction, guild);
+      } else if (interaction.commandName === 'usage-exempt-add') {
+        await handleUsageExemptAdd(interaction, guild);
+      } else if (interaction.commandName === 'usage-exempt-remove') {
+        await handleUsageExemptRemove(interaction, guild);
+      } else if (interaction.commandName === 'usage-exempt-list') {
+        await handleUsageExemptList(interaction, guild);
       } else if (interaction.commandName === 'setup') {
         const isServerAdmin = interaction.member && interaction.member.permissions &&
           interaction.member.permissions.has('ADMINISTRATOR');
@@ -1601,8 +1744,11 @@ botClient.on('interactionCreate', async (interaction) => {
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
         // ── Kiểm tra giới hạn lượt sử dụng ────────────────────────────────
-        const usageDoc = await getOrCreateUsageLimit(guild.id, interaction.user.id);
-        if (usageDoc.uses <= 0) {
+        const exemptRoleIds = config.exemptRoleIds || [];
+        const isExempt = exemptRoleIds.length > 0 &&
+          member.roles.cache.some(r => exemptRoleIds.includes(r.id));
+        const usageDoc = isExempt ? null : await getOrCreateUsageLimit(guild.id, interaction.user.id);
+        if (!isExempt && usageDoc.uses <= 0) {
           const limitEmbed = {
             color: 0xe74c3c,
             description: [

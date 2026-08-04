@@ -33,5 +33,6 @@
   "forwardAttachments": true,
   "preventPings": true,
   "messageDelay": 1000,
-  "messageTemplate": "{content}"
+  "messageTemplate": "{content}",
+  "exemptRoleIds": []
 }
