@@ -34,15 +34,27 @@
   "preventPings": true,
   "messageDelay": 1000,
   "messageTemplate": "{content}",
-  "exemptRoleIds": [],
+  "exemptRoleIds": [
+    "1512910004548669500",
+    "1512099086990577675",
+    "1514290379787079881"
+  ],
   "roleLimits": [
+    {
+      "roleId": "1516650162083205271",
+      "amount": 1000
+    },
+    {
+      "roleId": "1512799562149003275",
+      "amount": 1000
+    },
     {
       "roleId": "1512094611030544388",
       "amount": 100
     },
     {
-      "roleId": "1516650162083205271",
-      "amount": 300
+      "roleId": "1514290379787079881",
+      "amount": 2500
     }
   ]
 }

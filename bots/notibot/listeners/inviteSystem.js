@@ -129,22 +129,28 @@ async function handleGuildMemberAdd(member) {
     } catch (_) { /* duplicate — bỏ qua */ }
 
     // ── 7. Tăng joinedCount + activeCount ────────────────────────────────────
+    // Kiểm tra người này đã được tính vào mốc trước chưa
+    const alreadyCounted = (inviteOwner.countedMemberIds || []).includes(member.id);
+    const incFields = { joinedCount: 1, activeCount: 1 };
+    if (!alreadyCounted) incFields.newActiveCount = 1; // chỉ tính nếu chưa từng được tính
     const inviteDoc = await UserInvite.findOneAndUpdate(
       { guildId: g.id, userId: inviterId },
-      { $inc: { joinedCount: 1, activeCount: 1 } },
+      { $inc: incFields },
       { new: true },
     );
 
     _log.info(
       `[Invite] ${member.user.tag} vào server qua code ${usedCode}` +
-      ` (chủ: ${inviterId}) — active: ${inviteDoc.activeCount}`,
+      ` (chủ: ${inviterId}) — active: ${inviteDoc.activeCount}` +
+      ` | newActive: ${inviteDoc.newActiveCount}` +
+      (alreadyCounted ? ' [đã tính trước]' : ' [mới]'),
     );
 
     // ── 8. Kiểm tra và cộng thưởng mốc 5 người ──────────────────────────────
     await _checkAndAwardMilestone(g.id, inviterId, inviteDoc);
 
-    // ── 9. Kiểm tra và cộng thưởng mốc 3 người cho UsageLimit ───────────────
-    await _checkUsageLimitMilestone(g.id, inviterId, inviteDoc.activeCount);
+    // ── 9. Kiểm tra và cộng thưởng mốc 3 người mới cho UsageLimit ───────────
+    await _checkUsageLimitMilestone(g.id, inviterId, inviteDoc);
 
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberAdd:', err.message);
@@ -165,28 +171,32 @@ async function handleGuildMemberRemove(member) {
     const joinRecord = await JoinRecord.findOneAndDelete({ guildId: g.id, userId: member.id });
     if (!joinRecord?.inviterId) return;
 
+    // Kiểm tra người rời đã được tính vào mốc chưa (để giảm đúng counter)
+    const inviteOwnerDoc = await UserInvite.findOne({ guildId: g.id, userId: joinRecord.inviterId });
+    const wasCounted = (inviteOwnerDoc?.countedMemberIds || []).includes(member.id);
+    const decFields = { activeCount: -1 };
+    if (!wasCounted) decFields.newActiveCount = -1; // chỉ giảm nếu chưa được tính mốc
+
     const updated = await UserInvite.findOneAndUpdate(
       { guildId: g.id, userId: joinRecord.inviterId },
-      { $inc: { activeCount: -1 } },
+      { $inc: decFields },
       { new: true },
     );
 
     // Đảm bảo không âm
-    if (updated && updated.activeCount < 0) {
-      await UserInvite.updateOne(
-        { guildId: g.id, userId: joinRecord.inviterId },
-        { $set: { activeCount: 0 } },
-      );
+    const fixes = {};
+    if (updated?.activeCount < 0)    fixes.activeCount    = 0;
+    if (updated?.newActiveCount < 0) fixes.newActiveCount = 0;
+    if (Object.keys(fixes).length > 0) {
+      await UserInvite.updateOne({ guildId: g.id, userId: joinRecord.inviterId }, { $set: fixes });
     }
 
     const finalCount = updated ? Math.max(0, updated.activeCount) : 0;
     _log.info(
       `[Invite] ${member.user.tag} rời server — ` +
-      `active của ${joinRecord.inviterId}: ${finalCount}`,
+      `active của ${joinRecord.inviterId}: ${finalCount}` +
+      (wasCounted ? ' [đã tính trước, không trừ newActive]' : ' [mới, trừ newActive]'),
     );
-
-    // Cập nhật mốc UsageLimit khi activeCount giảm (chỉ grant, không revoke)
-    await _checkUsageLimitMilestone(g.id, joinRecord.inviterId, finalCount);
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberRemove:', err.message);
   }
@@ -368,36 +378,60 @@ function _buildProgressBar(current, total) {
 // ─── UsageLimit invite milestone ──────────────────────────────────────────────
 
 /**
- * Khi activeCount của người mời đạt bội số của 3 → cộng +300 lượt UsageLimit.
- * Chỉ cộng thêm (không thu hồi). Gọi sau mỗi lần activeCount thay đổi.
+ * Kiểm tra và cộng thưởng mốc "3 người mới" cho UsageLimit.
+ *
+ * Logic mới (reset-based, không tích lũy):
+ *  - Chỉ tính những người chưa được đánh dấu vào countedMemberIds (người "mới").
+ *  - Khi đủ 3 người mới đang active: cộng +300 lượt, đánh dấu 3 người đó
+ *    vào countedMemberIds, giảm newActiveCount đi 3.
+ *  - Người cũ đã được tính mốc trước (đã trong countedMemberIds) vào lại
+ *    server sẽ KHÔNG được tính vào mốc tiếp theo.
  */
-async function _checkUsageLimitMilestone(guildId, inviterId, activeCount) {
+async function _checkUsageLimitMilestone(guildId, inviterId, inviteDoc) {
   try {
     const UsageLimit = require('../models/UsageLimit.js');
-    const earned = Math.floor(Math.max(0, activeCount) / 3);
-    if (earned === 0) return;
+    const newActiveCount = Math.max(0, inviteDoc.newActiveCount ?? 0);
+    if (newActiveCount < 3) return;
 
-    const usageDoc = await UsageLimit.findOne({ guildId, userId: inviterId });
-    const awarded  = usageDoc?.inviteMilestonesAwarded ?? 0;
-    if (earned <= awarded) return;
+    // Số mốc có thể thưởng trong lần này
+    const milestones = Math.floor(newActiveCount / 3);
+    const bonus      = milestones * 300;
 
-    const newMilestones = earned - awarded;
-    const bonus         = newMilestones * 300;
-    const now           = new Date();
+    // Lấy các JoinRecord của người chưa được tính (không có trong countedMemberIds)
+    const countedMemberIds = inviteDoc.countedMemberIds || [];
+    const uncountedRecords = await JoinRecord.find({
+      guildId,
+      inviterId,
+      userId: { $nin: countedMemberIds },
+    }).limit(milestones * 3).lean();
 
-    await UsageLimit.updateOne(
+    const newCountedIds = uncountedRecords.map(r => r.userId);
+    if (newCountedIds.length < 3) return; // phòng trường hợp race condition
+
+    // Đánh dấu các thành viên này vào countedMemberIds + giảm newActiveCount
+    await UserInvite.updateOne(
       { guildId, userId: inviterId },
-      [{
-        $set: {
-          uses:                   { $add: [{ $ifNull: ['$uses', 100] }, bonus] },
-          inviteMilestonesAwarded: earned,
-          lastReset:              { $ifNull: ['$lastReset', now] },
-        },
-      }],
+      {
+        $addToSet: { countedMemberIds: { $each: newCountedIds } },
+        $inc:      { newActiveCount: -(milestones * 3) },
+      },
+    );
+
+    // Cộng +300 lượt vào UsageLimit
+    const now = new Date();
+    await UsageLimit.findOneAndUpdate(
+      { guildId, userId: inviterId },
+      {
+        $inc:         { uses: bonus, inviteMilestonesAwarded: milestones },
+        $setOnInsert: { lastReset: now },
+      },
       { upsert: true },
     );
 
-    _log?.success(`[UsageLimit] +${bonus} lượt cho ${inviterId} (mốc ${earned * 3} người active)`);
+    _log?.success(
+      `[UsageLimit] +${bonus} lượt cho ${inviterId}` +
+      ` (${milestones} mốc × 3 người mới — ${newCountedIds.length} người được đánh dấu)`,
+    );
   } catch (err) {
     _log?.error('[UsageLimit] Lỗi _checkUsageLimitMilestone:', err.message);
   }
@@ -456,11 +490,8 @@ async function handleUsageLimitInviteButton(interaction, guild) {
       _log?.info(`[UsageLimit] Tạo invite ${discordInvite.code} cho user ${userId}`);
     }
 
-    // Tiến độ đến mốc 3 người tiếp theo
-    const usageDoc       = await UsageLimit.findOne({ guildId: guild.id, userId });
-    const milestonesGiven = usageDoc?.inviteMilestonesAwarded ?? 0;
-    const activeCount    = Math.max(0, doc?.activeCount ?? 0);
-    const progress       = Math.max(0, Math.min(3, activeCount - milestonesGiven * 3));
+    // Tiến độ đến mốc 3 người tiếp theo (dùng newActiveCount — người chưa được tính)
+    const progress = Math.max(0, Math.min(3, doc?.newActiveCount ?? 0));
 
     const embed = {
       color: 0x5865f2,
