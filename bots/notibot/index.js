@@ -1961,6 +1961,7 @@ botClient.on('interactionCreate', async (interaction) => {
         const embed = {
           title: 'Tuỳ Chỉnh Thông Báo <a:tichdo:1532847924978126989>',
           description: [
+            '────────────────────────────────────',
             'Nhấn tuỳ chỉnh thông báo để chọn loại thông báo bạn muốn nhận.',
             'Sau khi ấn sẽ hiển thị bản cài đặt, bạn chỉ cần chọn loại hạt, thời tiết, nông cụ mà bạn muốn nhận thông báo khi cửa hàng vừa làm mới.'
           ].join('\n'),
