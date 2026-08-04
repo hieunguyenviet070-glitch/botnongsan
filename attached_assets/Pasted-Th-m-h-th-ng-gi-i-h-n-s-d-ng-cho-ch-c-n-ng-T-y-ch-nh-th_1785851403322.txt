@@ -1,0 +1,98 @@
+Thêm hệ thống giới hạn sử dụng cho chức năng **"Tùy chỉnh thông báo"** hiện có.
+
+Phạm vi áp dụng:
+
+- Chỉ áp dụng cho giao diện "Tùy chỉnh thông báo" tại kênh **⚙️｜setup-thông-báo**.
+- Không ảnh hưởng đến bất kỳ hệ thống hoặc chức năng nào khác của bot.
+
+Yêu cầu:
+
+- Mỗi người dùng mặc định có **100 lượt sử dụng mỗi tháng**.
+- Dữ liệu lưu bằng **MongoDB (Mongoose)**.
+- Đầu mỗi tháng tự động **+ 100 lượt**.
+- Hệ thống vẫn hoạt động bình thường sau khi bot khởi động lại.
+
+Các kênh được áp dụng để gửi thông báo:
+
+- 🌱｜báo-hạt-giống
+- 🌦️｜báo-thời-tiết
+- 🚜｜báo-nông-cụ
+- 🏪｜refresh-gian-hàng
+
+## Cách tính lượt
+
+- Người dùng **KHÔNG bị trừ lượt** khi mở giao diện "Tùy chỉnh thông báo".
+- Người dùng **KHÔNG bị trừ lượt** khi chỉnh sửa hoặc lưu cấu hình.
+- Chỉ khi bot **thực sự gửi một thông báo có tag role** theo cấu hình của người dùng tại một trong bốn kênh trên thì mới **trừ 1 lượt sử dụng**.
+- Một thông báo gửi thành công = trừ 1 lượt.
+- Nếu một thông báo tag nhiều role thì vẫn chỉ tính là **1 lượt**.
+
+## Khi người dùng nhấn nút "Tùy chỉnh thông báo"
+
+Nếu còn lượt:
+
+- Mở giao diện như hiện tại.
+- Giữ nguyên toàn bộ chức năng đang có.
+
+Nếu đã hết lượt:
+
+- Không mở giao diện.
+- Không cho phép cấu hình thông báo.
+- Gửi **Embed Ephemeral (riêng tư)**.
+
+Nội dung:
+
+━━━━━━━━━━━━━━━━━━
+
+**### <:exclamation:1532333725155856556> BẠN ĐÃ HẾT 100 LƯỢT SỬ DỤNG TRONG THÁNG NÀY**
+
+Để tiếp tục sử dụng tính năng thông báo, vui lòng chọn một trong hai cách sau:
+
+<a:575241fastflashingarrowright:1532844428480352409> Donate để mở khóa và sử dụng ngay.
+
+<a:575241fastflashingarrowright:1532844428480352409> Mời **03 người bạn** tham gia để nhận thêm 300 lượt sử dụng miễn phí.
+
+━━━━━━━━━━━━━━━━━━
+
+Bên dưới Embed có 2 Button.
+
+## <a:donate:1532821459557417173> Donate
+
+Hyperlink link https://discord.com/channels/1363986043509932093/1514934088870662184
+
+## <:94710cartoonheartshiny:1532341617116057610> Mời Bạn Bè
+
+Khi nhấn:
+
+Nếu người dùng chưa có Invite:
+
+- Bot tự động tạo một Discord Invite riêng.
+- Mỗi người chỉ có duy nhất **01 Invite**.
+- Invite không giới hạn thời gian.
+- Invite không giới hạn số lượt sử dụng.
+
+Sau đó gửi Embed riêng tư:
+
+**### Link mời của bạn**
+
+`https://discord.gg/xxxxxxxx`
+
+Tiến độ:
+
+**0 / 3 người**
+
+**Hãy mời 03 người bạn vào sever bằng link trên để nhận 300 lượt sử dụng miễn phí nhé**
+
+## Theo dõi Invite
+- inviteCreate
+- inviteDelete
+- guildMemberAdd
+- guildMemberRemove
+
+Khi thành viên tham gia bằng Invite:
+
++1 lượt.
+
+Khi thành viên rời server:
+
+-1 lượt. 
