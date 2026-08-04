@@ -1994,8 +1994,6 @@ botClient.on('interactionCreate', async (interaction) => {
           const limitEmbed = {
             color: 0xe74c3c,
             description: [
-              '━━━━━━━━━━━━━━━━━━',
-              '',
               '### <:exclamation:1532333725155856556> BẠN ĐÃ HẾT 100 LƯỢT SỬ DỤNG TRONG THÁNG NÀY',
               '',
               'Để tiếp tục sử dụng tính năng thông báo, vui lòng chọn một trong hai cách sau:',
@@ -2003,8 +2001,6 @@ botClient.on('interactionCreate', async (interaction) => {
               '<a:575241fastflashingarrowright:1532844428480352409> Donate để mở khóa và sử dụng ngay.',
               '',
               '<a:575241fastflashingarrowright:1532844428480352409> Mời **03 người bạn** tham gia để nhận thêm 300 lượt sử dụng miễn phí.',
-              '',
-              '━━━━━━━━━━━━━━━━━━',
             ].join('\n'),
           };
           const limitRow = new MessageActionRow().addComponents(
