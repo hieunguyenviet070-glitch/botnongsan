@@ -1692,11 +1692,13 @@ async function registerSlashCommands(guild) {
       }
     ];
     if (guild.commands) {
-      await guild.commands.set(commandData);
+      const registered = await guild.commands.set(commandData);
+      log.success(`Đã đăng ký ${registered.size} slash command cho server: ${guild.name}`);
     } else {
       await botClient.api.applications(botClient.user.id).guilds(guild.id).commands.put({
         data: commandData
       });
+      log.success(`Đã đăng ký slash command (fallback) cho server: ${guild.name}`);
     }
   } catch (err) {
     log.error(`Lỗi đăng ký slash command cho server ${guild.name}:`, err.message || err);
