@@ -110,6 +110,15 @@ async function handleGuildMemberAdd(member) {
         { new: true },
       );
       if (creatorDoc) {
+        // Lưu JoinRecord để trừ joinCount khi member rời
+        try {
+          await JoinRecord.create({
+            guildId:    g.id,
+            userId:     member.id,
+            inviterId:  creatorDoc.userId,
+            inviteCode: usedCode,
+          });
+        } catch (_) { /* duplicate — bỏ qua */ }
         _log.info(`[Creator] ${member.user.tag} vào server qua invite Creator ${usedCode} (creator: ${creatorDoc.userId}) — tổng: ${creatorDoc.joinCount}`);
       } else {
         _log.info(`[Invite] Code ${usedCode} không có trong DB — bỏ qua.`);
@@ -197,6 +206,21 @@ async function handleGuildMemberRemove(member) {
       `active của ${joinRecord.inviterId}: ${finalCount}` +
       (wasCounted ? ' [đã tính trước, không trừ newActive]' : ' [mới, trừ newActive]'),
     );
+
+    // ── Trừ joinCount nếu inviterId là Creator ────────────────────────────────
+    try {
+      const Creator = require('../models/Creator.js');
+      const creatorDoc = await Creator.findOneAndUpdate(
+        { guildId: g.id, userId: joinRecord.inviterId, joinCount: { $gt: 0 } },
+        { $inc: { joinCount: -1 } },
+        { new: true },
+      );
+      if (creatorDoc) {
+        _log.info(`[Creator] ${member.user.tag} rời server — trừ 1 lượt Creator ${joinRecord.inviterId} — còn: ${creatorDoc.joinCount}`);
+      }
+    } catch (err) {
+      _log.warn(`[Creator] Lỗi khi trừ joinCount: ${err.message}`);
+    }
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberRemove:', err.message);
   }
