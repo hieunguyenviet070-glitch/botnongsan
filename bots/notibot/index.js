@@ -1407,6 +1407,45 @@ async function handleCreatorReset(interaction, guild) {
     description: `Đã đặt lại số lượt join của **${result.modifiedCount}** Creator về **0**.\n_Link invite được giữ nguyên._` }] });
 }
 
+async function handleCreatorRemove(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const targetUser = interaction.options.getUser('user');
+  const guildId = guild.id;
+  const userId = targetUser.id;
+
+  const doc = await Creator.findOneAndDelete({ guildId, userId });
+  if (!doc) {
+    return interaction.editReply({ embeds: [{ color: 0xe67e22,
+      title: '⚠️ Không tìm thấy Creator',
+      description: `<@${userId}> không có trong danh sách Creator.` }] });
+  }
+
+  // Xóa invite trên Discord nếu còn tồn tại
+  if (doc.inviteCode) {
+    try {
+      const allInvites = await guild.invites.fetch();
+      const inv = allInvites.get(doc.inviteCode);
+      if (inv) await inv.delete('Xóa Creator bởi Admin');
+    } catch (_) { /* invite đã bị xóa thủ công — bỏ qua */ }
+
+    // Xóa khỏi cache
+    const gMap = inviteCache.get(guildId);
+    if (gMap) gMap.delete(doc.inviteCode);
+  }
+
+  log.info(`[Creator] Đã xóa Creator: ${targetUser.tag} (${userId}) — code: ${doc.inviteCode}`);
+  return interaction.editReply({ embeds: [{ color: 0xe74c3c,
+    title: '🗑️ Đã xóa Creator',
+    description: [
+      `👤 Creator: <@${userId}>`,
+      `🔗 Link invite đã bị xóa: **${doc.inviteURL || 'N/A'}**`,
+      `👥 Tổng join đã ghi nhận: **${doc.joinCount}**`,
+    ].join('\n') }] });
+}
+
 // ─── UsageLimit admin commands ────────────────────────────────────────────────
 
 async function handleUsageAdd(interaction, guild) {
@@ -1631,6 +1670,11 @@ async function registerSlashCommands(guild) {
       {
         name: 'creator-reset',
         description: 'Reset số lượt join của tất cả Creator về 0 (Admin)'
+      },
+      {
+        name: 'creator-remove',
+        description: 'Xóa một Creator và thu hồi link invite của họ (Admin)',
+        options: [{ type: 6, name: 'user', description: 'Creator cần xóa', required: true }]
       },
       {
         name: 'usage-add',
@@ -1903,6 +1947,8 @@ botClient.on('interactionCreate', async (interaction) => {
         await handleCreatorStats(interaction, guild);
       } else if (interaction.commandName === 'creator-reset') {
         await handleCreatorReset(interaction, guild);
+      } else if (interaction.commandName === 'creator-remove') {
+        await handleCreatorRemove(interaction, guild);
       } else if (interaction.commandName === 'usage-add') {
         await handleUsageAdd(interaction, guild);
       } else if (interaction.commandName === 'usage-remove') {
