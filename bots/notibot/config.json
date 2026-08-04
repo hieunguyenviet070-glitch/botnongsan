@@ -34,5 +34,6 @@
   "preventPings": true,
   "messageDelay": 1000,
   "messageTemplate": "{content}",
-  "exemptRoleIds": []
+  "exemptRoleIds": [],
+  "roleLimits": []
 }

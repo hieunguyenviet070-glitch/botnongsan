@@ -1501,6 +1501,114 @@ async function handleUsageExemptList(interaction, guild) {
     footer: { text: `Tổng: ${exemptRoleIds.length} role` } }], ephemeral: true });
 }
 
+async function handleUsageCheck(interaction, guild) {
+  const isAdmin  = _isAdmin(interaction.user.id);
+  const target   = interaction.options.getUser('user');
+
+  // Chỉ admin mới được xem người khác
+  if (target && target.id !== interaction.user.id && !isAdmin) {
+    return interaction.reply({ content: '❌ Bạn không có quyền kiểm tra lượt của người khác!', ephemeral: true });
+  }
+
+  const checkUser = target || interaction.user;
+  await interaction.deferReply({ ephemeral: true });
+
+  // Lấy member để tính role limit
+  let checkMember = null;
+  try { checkMember = await guild.members.fetch(checkUser.id); } catch (_) {}
+
+  // Kiểm tra exempt
+  const exemptRoleIds = config.exemptRoleIds || [];
+  const isExempt = exemptRoleIds.length > 0 && checkMember &&
+    checkMember.roles.cache.some(r => exemptRoleIds.includes(r.id));
+
+  if (isExempt) {
+    return interaction.editReply({ embeds: [{ color: 0x2ecc71,
+      description: `🛡️ <@${checkUser.id}> được **miễn giới hạn** — không bị trừ lượt.` }] });
+  }
+
+  const doc = await getOrCreateUsageLimit(guild.id, checkUser.id, checkMember);
+
+  // Tìm giới hạn tháng của user
+  const roleLimits  = config.roleLimits || [];
+  const monthlyMax  = _monthlyGrantForMember(checkMember);
+  const roleLine    = roleLimits.length > 0 && checkMember
+    ? roleLimits.find(rl => checkMember.roles.cache.has(rl.roleId))
+    : null;
+
+  const desc = [
+    `👤 **Người dùng:** <@${checkUser.id}>`,
+    `📊 **Lượt còn lại:** ${doc.uses} / ${monthlyMax} lượt`,
+    roleLine
+      ? `🎖️ **Giới hạn từ role:** <@&${roleLine.roleId}> (${roleLine.amount} lượt/tháng)`
+      : `📅 **Giới hạn mặc định:** ${monthlyMax} lượt/tháng`,
+    `🔄 **Reset lần cuối:** <t:${Math.floor(new Date(doc.lastReset).getTime() / 1000)}:D>`,
+  ].join('\n');
+
+  return interaction.editReply({ embeds: [{ color: doc.uses > 0 ? 0x5865f2 : 0xe74c3c,
+    title: '🔍 Kiểm tra lượt sử dụng',
+    description: desc }] });
+}
+
+async function handleUsageRoleAdd(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  const role   = interaction.options.getRole('role');
+  const amount = interaction.options.getInteger('amount');
+  if (!config.roleLimits) config.roleLimits = [];
+
+  const existing = config.roleLimits.find(rl => rl.roleId === role.id);
+  if (existing) {
+    const oldAmount = existing.amount;
+    existing.amount = amount;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+    log.info(`[UsageLimit] Admin ${interaction.user.tag} cập nhật role limit: ${role.name} ${oldAmount} → ${amount} lượt/tháng`);
+    return interaction.reply({ embeds: [{ color: 0xf39c12,
+      description: `🔄 Đã **cập nhật** giới hạn của <@&${role.id}>:\n${oldAmount} → **${amount} lượt/tháng**` }], ephemeral: true });
+  }
+
+  config.roleLimits.push({ roleId: role.id, amount });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} thêm role limit: ${role.name} = ${amount} lượt/tháng`);
+  return interaction.reply({ embeds: [{ color: 0x2ecc71,
+    description: `✅ Đã thêm <@&${role.id}> vào danh sách giới hạn riêng.\n📊 Giới hạn: **${amount} lượt/tháng**\n_Áp dụng từ chu kỳ tháng tiếp theo._` }], ephemeral: true });
+}
+
+async function handleUsageRoleRemove(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  const role = interaction.options.getRole('role');
+  if (!config.roleLimits) config.roleLimits = [];
+  const idx = config.roleLimits.findIndex(rl => rl.roleId === role.id);
+  if (idx === -1) {
+    return interaction.reply({ embeds: [{ color: 0xf39c12,
+      description: `ℹ️ Role <@&${role.id}> không có trong danh sách giới hạn riêng.` }], ephemeral: true });
+  }
+  config.roleLimits.splice(idx, 1);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  log.info(`[UsageLimit] Admin ${interaction.user.tag} xóa role limit: ${role.name} (${role.id})`);
+  return interaction.reply({ embeds: [{ color: 0xe74c3c,
+    description: `✅ Đã xóa <@&${role.id}> khỏi danh sách giới hạn riêng.\nThành viên sẽ trở về mức mặc định **100 lượt/tháng**.` }], ephemeral: true });
+}
+
+async function handleUsageRoleList(interaction, guild) {
+  const roleLimits = config.roleLimits || [];
+  if (roleLimits.length === 0) {
+    return interaction.reply({ embeds: [{ color: 0x95a5a6,
+      description: 'ℹ️ Chưa có role nào được cấu hình giới hạn riêng.\n_Tất cả người dùng đang áp dụng mức mặc định **100 lượt/tháng**._' }], ephemeral: true });
+  }
+  const lines = roleLimits
+    .sort((a, b) => b.amount - a.amount)
+    .map((rl, i) => `**${i + 1}.** <@&${rl.roleId}> — **${rl.amount} lượt/tháng**`)
+    .join('\n');
+  return interaction.reply({ embeds: [{ color: 0x5865f2,
+    title: '📋 Danh sách role giới hạn riêng',
+    description: lines,
+    footer: { text: `Tổng: ${roleLimits.length} role · Mặc định: 100 lượt/tháng` } }], ephemeral: true });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 async function registerSlashCommands(guild) {
   try {
@@ -1555,6 +1663,32 @@ async function registerSlashCommands(guild) {
       {
         name: 'usage-exempt-list',
         description: 'Xem danh sách tất cả role được miễn giới hạn lượt sử dụng'
+      },
+      {
+        name: 'usage-check',
+        description: 'Kiểm tra số lượt sử dụng còn lại (Admin có thể kiểm tra người khác)',
+        options: [
+          { type: 6, name: 'user', description: 'Người dùng cần kiểm tra (bỏ trống = kiểm tra bản thân)', required: false }
+        ]
+      },
+      {
+        name: 'usage-role-add',
+        description: 'Thêm role vào danh sách giới hạn riêng với số lượt tùy chỉnh (Admin)',
+        options: [
+          { type: 8, name: 'role',   description: 'Role cần thêm giới hạn riêng',             required: true },
+          { type: 4, name: 'amount', description: 'Số lượt mỗi tháng cho role này (vd: 300)', required: true, min_value: 1 }
+        ]
+      },
+      {
+        name: 'usage-role-remove',
+        description: 'Xóa role khỏi danh sách giới hạn riêng (Admin)',
+        options: [
+          { type: 8, name: 'role', description: 'Role cần xóa khỏi danh sách giới hạn riêng', required: true }
+        ]
+      },
+      {
+        name: 'usage-role-list',
+        description: 'Xem tất cả role có giới hạn lượt tùy chỉnh'
       }
     ];
     if (guild.commands) {
@@ -1593,21 +1727,38 @@ async function registerCommandsForTargetGuilds() {
  * Lấy hoặc tạo document UsageLimit cho user.
  * Nếu đã qua tháng mới → tự động cộng thêm 100 lượt.
  */
-async function getOrCreateUsageLimit(guildId, userId) {
-  const now = new Date();
+/**
+ * Tính số lượt tháng cho user dựa trên role cao nhất trong roleLimits.
+ * Mặc định 100. Nếu user có nhiều role trong danh sách → lấy cao nhất.
+ */
+function _monthlyGrantForMember(member) {
+  const roleLimits = config.roleLimits || [];
+  if (!member || roleLimits.length === 0) return 100;
+  let grant = 100;
+  for (const rl of roleLimits) {
+    if (member.roles.cache.has(rl.roleId) && rl.amount > grant) {
+      grant = rl.amount;
+    }
+  }
+  return grant;
+}
+
+async function getOrCreateUsageLimit(guildId, userId, member = null) {
+  const now   = new Date();
+  const grant = _monthlyGrantForMember(member);
   let doc = await UsageLimit.findOne({ guildId, userId });
   if (!doc) {
-    doc = await UsageLimit.create({ guildId, userId, uses: 100, lastReset: now });
+    doc = await UsageLimit.create({ guildId, userId, uses: grant, lastReset: now });
     return doc;
   }
   const last = new Date(doc.lastReset);
   if (last.getMonth() !== now.getMonth() || last.getFullYear() !== now.getFullYear()) {
     doc = await UsageLimit.findOneAndUpdate(
       { guildId, userId },
-      { $inc: { uses: 100 }, $set: { lastReset: now } },
+      { $inc: { uses: grant }, $set: { lastReset: now } },
       { new: true },
     );
-    log.info(`[UsageLimit] +100 lượt tháng mới cho user ${userId} (còn lại: ${doc.uses})`);
+    log.info(`[UsageLimit] +${grant} lượt tháng mới cho user ${userId} (còn lại: ${doc.uses})`);
   }
   return doc;
 }
@@ -1679,6 +1830,14 @@ botClient.on('interactionCreate', async (interaction) => {
         await handleUsageExemptRemove(interaction, guild);
       } else if (interaction.commandName === 'usage-exempt-list') {
         await handleUsageExemptList(interaction, guild);
+      } else if (interaction.commandName === 'usage-check') {
+        await handleUsageCheck(interaction, guild);
+      } else if (interaction.commandName === 'usage-role-add') {
+        await handleUsageRoleAdd(interaction, guild);
+      } else if (interaction.commandName === 'usage-role-remove') {
+        await handleUsageRoleRemove(interaction, guild);
+      } else if (interaction.commandName === 'usage-role-list') {
+        await handleUsageRoleList(interaction, guild);
       } else if (interaction.commandName === 'setup') {
         const isServerAdmin = interaction.member && interaction.member.permissions &&
           interaction.member.permissions.has('ADMINISTRATOR');
@@ -1747,7 +1906,7 @@ botClient.on('interactionCreate', async (interaction) => {
         const exemptRoleIds = config.exemptRoleIds || [];
         const isExempt = exemptRoleIds.length > 0 &&
           member.roles.cache.some(r => exemptRoleIds.includes(r.id));
-        const usageDoc = isExempt ? null : await getOrCreateUsageLimit(guild.id, interaction.user.id);
+        const usageDoc = isExempt ? null : await getOrCreateUsageLimit(guild.id, interaction.user.id, member);
         if (!isExempt && usageDoc.uses <= 0) {
           const limitEmbed = {
             color: 0xe74c3c,
