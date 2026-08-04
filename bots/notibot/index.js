@@ -1965,7 +1965,7 @@ botClient.on('interactionCreate', async (interaction) => {
             'Nhấn tuỳ chỉnh thông báo để chọn loại thông báo bạn muốn nhận.',
             'Sau khi ấn sẽ hiển thị bản cài đặt, bạn chỉ cần chọn loại hạt, thời tiết, nông cụ mà bạn muốn nhận thông báo khi cửa hàng vừa làm mới.'
           ].join('\n'),
-          color: 0x2b2d31
+          color: 0xe74c3c
         };
         const row = new MessageActionRow().addComponents(
           new MessageButton()
