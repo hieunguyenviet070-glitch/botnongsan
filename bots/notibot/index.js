@@ -1443,8 +1443,16 @@ async function handleUsageRemove(interaction, guild) {
     { new: true },
   );
   log.info(`[UsageLimit] Admin ${interaction.user.tag} trừ -${amount} lượt của ${target.tag} → còn ${doc.uses}`);
+
+  let extraNote = '';
+  if (doc.uses <= 0) {
+    // Gỡ role và set về 0 — fire-and-forget để không block reply
+    revokeNotifRolesOnLimit(guild, target.id).catch(() => {});
+    extraNote = '\n⚠️ Người dùng đã hết lượt — đang thu hồi các role thông báo.';
+  }
+
   return interaction.editReply({ embeds: [{ color: 0xe74c3c,
-    description: `✅ Đã trừ **-${amount}** lượt của <@${target.id}>.\n📊 Hiện tại còn: **${doc.uses} lượt**` }] });
+    description: `✅ Đã trừ **-${amount}** lượt của <@${target.id}>.\n📊 Hiện tại còn: **${Math.max(0, doc.uses)} lượt**${extraNote}` }] });
 }
 
 async function handleUsageExemptAdd(interaction, guild) {
@@ -1717,6 +1725,76 @@ async function registerCommandsForTargetGuilds() {
     }
   }
 }
+// ─── Danh sách role thông báo cần gỡ khi hết lượt ───────────────────────────
+const REVOKE_ROLE_IDS = [
+  '1523935568814149723', '1523935570290802761', '1523935571427332098',
+  '1523935573356843138', '1523935574916993036', '1523935576917545081',
+  '1523935578419363944', '1523935580772368465', '1523935582429118495',
+  '1523935584077217824', '1523935585536835625', '1523935587499769876',
+  '1523935589232283759', '1523935590981304480', '1523935592923004968',
+  '1523935593992552482', '1523935596039639090', '1523935597557973012',
+  '1523935599231242300', '1523935601194176633', '1523935602913837197',
+  '1523935605577220176', '1523935607326249010', '1523935609054298185',
+  '1523935610803458068', '1523935612120338526', '1523935615803064350',
+  '1523935619070427306', '1523935620454420602', '1523935617375932570',
+  '1523935622203572254', '1523935623625314357', '1523935625135525962',
+  '1523935627320623164', '1523935629145145434', '1523935613961895936',
+];
+
+/**
+ * Gỡ toàn bộ REVOKE_ROLE_IDS khỏi member khi hết lượt.
+ * - Bỏ qua nếu member có role exempt.
+ * - Đặt uses = 0 trong DB (không để âm).
+ * - DM thông báo cho người dùng.
+ */
+async function revokeNotifRolesOnLimit(guild, userId) {
+  try {
+    const exemptRoleIds = config.exemptRoleIds || [];
+    let member;
+    try { member = await guild.members.fetch(userId); } catch (_) { return; }
+    if (!member) return;
+
+    // Bỏ qua thành viên được miễn giới hạn
+    if (exemptRoleIds.length > 0 && member.roles.cache.some(r => exemptRoleIds.includes(r.id))) return;
+
+    // Lọc chỉ các role mà member đang có trong danh sách
+    const toRemove = REVOKE_ROLE_IDS.filter(id => member.roles.cache.has(id));
+
+    // Đặt uses về 0 (không để âm)
+    await UsageLimit.updateOne(
+      { guildId: guild.id, userId },
+      { $set: { uses: 0 } },
+    );
+
+    if (toRemove.length > 0) {
+      try { await member.roles.remove(toRemove); } catch (e) {
+        log.warn(`[UsageLimit] Không thể gỡ role của ${userId}: ${e.message}`);
+      }
+      log.info(`[UsageLimit] Đã gỡ ${toRemove.length} role thông báo của ${member.user.tag} do hết lượt.`);
+    }
+
+    // DM thông báo
+    try {
+      await member.send({ embeds: [{
+        color: 0xe74c3c,
+        title: '⚠️ Bạn đã hết lượt sử dụng tháng này',
+        description: [
+          `Toàn bộ **${toRemove.length} role thông báo** của bạn đã bị thu hồi do hết **100 lượt** trong tháng này.`,
+          '',
+          'Để tiếp tục nhận thông báo, bạn có thể:',
+          '> <a:575241fastflashingarrowright:1532844428480352409> **Donate** để mở khóa ngay.',
+          '> <a:575241fastflashingarrowright:1532844428480352409> **Mời 3 người bạn** để nhận thêm 300 lượt miễn phí.',
+          '',
+          '-# Lượt sử dụng sẽ tự động được cộng lại vào đầu tháng sau.',
+        ].join('\n'),
+      }] });
+    } catch (_) { /* DM bị tắt — bỏ qua */ }
+
+  } catch (err) {
+    log.error('[UsageLimit] Lỗi revokeNotifRolesOnLimit:', err.message);
+  }
+}
+
 // ─── UsageLimit helpers ───────────────────────────────────────────────────────
 
 /**
@@ -1794,6 +1872,15 @@ async function deductUsageLimitForRoles(guild, roleIds) {
     }));
     await UsageLimit.bulkWrite(ops, { ordered: false });
     log.info(`[UsageLimit] Trừ 1 lượt của ${affectedUserIds.size} thành viên (guild: ${guildId})`);
+
+    // Tìm những user vừa về 0 hoặc âm → gỡ role + set về 0
+    const zeroDocs = await UsageLimit.find(
+      { guildId, userId: { $in: [...affectedUserIds] }, uses: { $lte: 0 } },
+      'userId',
+    ).lean();
+    for (const doc of zeroDocs) {
+      revokeNotifRolesOnLimit(guild, doc.userId).catch(() => {});
+    }
   } catch (err) {
     log.error('[UsageLimit] Lỗi deductUsageLimitForRoles:', err.message);
   }
