@@ -1380,7 +1380,7 @@ async function handleCreatorCommand(interaction, guild) {
 }
 
 async function handleCreatorStats(interaction, guild) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply();
   const creators = await Creator.find({ guildId: guild.id }).sort({ joinCount: -1 });
   if (creators.length === 0) {
     return interaction.editReply({ content: 'ℹ️ Chưa có Creator nào được thêm.' });
