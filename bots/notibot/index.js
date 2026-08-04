@@ -94,6 +94,7 @@ const inviteCache = new Map();
 const { handleReminderEmbed } = require('./listeners/reminderEmbed.js');
 const inviteSystem = require('./listeners/inviteSystem.js');
 const UserInvite = require('./models/UserInvite.js');
+const UsageLimit = require('./models/UsageLimit.js');
 const Creator = require('./models/Creator.js');
 // ─────────────────────────────────────────────────────────────────────────────
 function extractComponentText(components) {
@@ -1458,6 +1459,66 @@ async function registerCommandsForTargetGuilds() {
     }
   }
 }
+// ─── UsageLimit helpers ───────────────────────────────────────────────────────
+
+/**
+ * Lấy hoặc tạo document UsageLimit cho user.
+ * Nếu đã qua tháng mới → tự động cộng thêm 100 lượt.
+ */
+async function getOrCreateUsageLimit(guildId, userId) {
+  const now = new Date();
+  let doc = await UsageLimit.findOne({ guildId, userId });
+  if (!doc) {
+    doc = await UsageLimit.create({ guildId, userId, uses: 100, lastReset: now });
+    return doc;
+  }
+  const last = new Date(doc.lastReset);
+  if (last.getMonth() !== now.getMonth() || last.getFullYear() !== now.getFullYear()) {
+    doc = await UsageLimit.findOneAndUpdate(
+      { guildId, userId },
+      { $inc: { uses: 100 }, $set: { lastReset: now } },
+      { new: true },
+    );
+    log.info(`[UsageLimit] +100 lượt tháng mới cho user ${userId} (còn lại: ${doc.uses})`);
+  }
+  return doc;
+}
+
+/**
+ * Trừ 1 lượt sử dụng của tất cả thành viên (không phải bot) có một trong các roleId.
+ * Dùng aggregation pipeline để xử lý đúng cả trường hợp document chưa tồn tại.
+ */
+async function deductUsageLimitForRoles(guild, roleIds) {
+  try {
+    const affectedUserIds = new Set();
+    for (const roleId of roleIds) {
+      const role = guild.roles.cache.get(roleId);
+      if (role) role.members.forEach(m => { if (!m.user.bot) affectedUserIds.add(m.id); });
+    }
+    if (!affectedUserIds.size) return;
+
+    const guildId = guild.id;
+    const now     = new Date();
+    const ops = [...affectedUserIds].map(userId => ({
+      updateOne: {
+        filter: { guildId, userId },
+        update: [{
+          $set: {
+            uses:                    { $subtract: [{ $ifNull: ['$uses', 100] }, 1] },
+            lastReset:               { $ifNull: ['$lastReset', now] },
+            inviteMilestonesAwarded: { $ifNull: ['$inviteMilestonesAwarded', 0] },
+          },
+        }],
+        upsert: true,
+      },
+    }));
+    await UsageLimit.bulkWrite(ops, { ordered: false });
+    log.info(`[UsageLimit] Trừ 1 lượt của ${affectedUserIds.size} thành viên (guild: ${guildId})`);
+  } catch (err) {
+    log.error('[UsageLimit] Lỗi deductUsageLimitForRoles:', err.message);
+  }
+}
+
 botClient.on('interactionCreate', async (interaction) => {
   try {
     const guild = interaction.guild || (interaction.guildId ? await botClient.guilds.fetch(interaction.guildId).catch(() => null) : null);
@@ -1539,11 +1600,48 @@ botClient.on('interactionCreate', async (interaction) => {
       }
     } else if (interaction.isButton()) {
       if (interaction.customId === 'setup_customize') {
+        // ── Kiểm tra giới hạn lượt sử dụng ────────────────────────────────
+        const usageDoc = await getOrCreateUsageLimit(guild.id, interaction.user.id);
+        if (usageDoc.uses <= 0) {
+          const limitEmbed = {
+            color: 0xe74c3c,
+            description: [
+              '━━━━━━━━━━━━━━━━━━',
+              '',
+              '### <:exclamation:1532333725155856556> BẠN ĐÃ HẾT 100 LƯỢT SỬ DỤNG TRONG THÁNG NÀY',
+              '',
+              'Để tiếp tục sử dụng tính năng thông báo, vui lòng chọn một trong hai cách sau:',
+              '',
+              '<a:575241fastflashingarrowright:1532844428480352409> Donate để mở khóa và sử dụng ngay.',
+              '',
+              '<a:575241fastflashingarrowright:1532844428480352409> Mời **03 người bạn** tham gia để nhận thêm 300 lượt sử dụng miễn phí.',
+              '',
+              '━━━━━━━━━━━━━━━━━━',
+            ].join('\n'),
+          };
+          const limitRow = new MessageActionRow().addComponents(
+            new MessageButton()
+              .setLabel('Donate')
+              .setEmoji({ id: '1532821459557417173', name: 'donate', animated: true })
+              .setStyle('LINK')
+              .setURL('https://discord.com/channels/1363986043509932093/1514934088870662184'),
+            new MessageButton()
+              .setCustomId('usageLimit_invite')
+              .setLabel('Mời Bạn Bè')
+              .setEmoji({ id: '1532341617116057610', name: '94710cartoonheartshiny' })
+              .setStyle('PRIMARY'),
+          );
+          await interaction.reply({ embeds: [limitEmbed], components: [limitRow], ephemeral: true });
+          return;
+        }
+        // ── Còn lượt: mở giao diện bình thường ────────────────────────────
         const rows = buildSetupComponents(member);
         await interaction.reply({
           components: rows,
           ephemeral: true
         });
+      } else if (interaction.customId === 'usageLimit_invite') {
+        await inviteSystem.handleUsageLimitInviteButton(interaction, guild);
       } else if (interaction.customId === 'setup_clear_all') {
         await interaction.deferUpdate();
         const rolesToRemove = [];
@@ -1860,6 +1958,20 @@ async function forwardMessage(message, mapping) {
             log.error(`Lỗi khi tự động xóa ping vai trò:`, editErr.message);
           }
         }, 5 * 60 * 1000);
+      }
+    }
+
+    // ── Trừ 1 lượt của các thành viên có role được tag ──────────────────────
+    if (payload.content && targetChannel.guild) {
+      const pinnedRoleIds = (payload.content.match(/<@&(\d+)>/g) || [])
+        .map(m => m.match(/\d+/)[0]);
+      if (isRefresh) {
+        const toolshopRoleId = emojiConfig.roles && emojiConfig.roles['refresh_toolshop'];
+        if (toolshopRoleId) pinnedRoleIds.push(toolshopRoleId);
+        pinnedRoleIds.push('1532160502120054944');
+      }
+      if (pinnedRoleIds.length > 0) {
+        await deductUsageLimitForRoles(targetChannel.guild, pinnedRoleIds);
       }
     }
   } catch (err) {

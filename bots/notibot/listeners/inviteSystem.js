@@ -143,6 +143,9 @@ async function handleGuildMemberAdd(member) {
     // ── 8. Kiểm tra và cộng thưởng mốc 5 người ──────────────────────────────
     await _checkAndAwardMilestone(g.id, inviterId, inviteDoc);
 
+    // ── 9. Kiểm tra và cộng thưởng mốc 3 người cho UsageLimit ───────────────
+    await _checkUsageLimitMilestone(g.id, inviterId, inviteDoc.activeCount);
+
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberAdd:', err.message);
   }
@@ -181,6 +184,9 @@ async function handleGuildMemberRemove(member) {
       `[Invite] ${member.user.tag} rời server — ` +
       `active của ${joinRecord.inviterId}: ${finalCount}`,
     );
+
+    // Cập nhật mốc UsageLimit khi activeCount giảm (chỉ grant, không revoke)
+    await _checkUsageLimitMilestone(g.id, joinRecord.inviterId, finalCount);
   } catch (err) {
     _log.error('[Invite] Lỗi guildMemberRemove:', err.message);
   }
@@ -359,6 +365,125 @@ function _buildProgressBar(current, total) {
   return '🟩'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
+// ─── UsageLimit invite milestone ──────────────────────────────────────────────
+
+/**
+ * Khi activeCount của người mời đạt bội số của 3 → cộng +300 lượt UsageLimit.
+ * Chỉ cộng thêm (không thu hồi). Gọi sau mỗi lần activeCount thay đổi.
+ */
+async function _checkUsageLimitMilestone(guildId, inviterId, activeCount) {
+  try {
+    const UsageLimit = require('../models/UsageLimit.js');
+    const earned = Math.floor(Math.max(0, activeCount) / 3);
+    if (earned === 0) return;
+
+    const usageDoc = await UsageLimit.findOne({ guildId, userId: inviterId });
+    const awarded  = usageDoc?.inviteMilestonesAwarded ?? 0;
+    if (earned <= awarded) return;
+
+    const newMilestones = earned - awarded;
+    const bonus         = newMilestones * 300;
+    const now           = new Date();
+
+    await UsageLimit.updateOne(
+      { guildId, userId: inviterId },
+      [{
+        $set: {
+          uses:                   { $add: [{ $ifNull: ['$uses', 100] }, bonus] },
+          inviteMilestonesAwarded: earned,
+          lastReset:              { $ifNull: ['$lastReset', now] },
+        },
+      }],
+      { upsert: true },
+    );
+
+    _log?.success(`[UsageLimit] +${bonus} lượt cho ${inviterId} (mốc ${earned * 3} người active)`);
+  } catch (err) {
+    _log?.error('[UsageLimit] Lỗi _checkUsageLimitMilestone:', err.message);
+  }
+}
+
+/**
+ * Xử lý nút "Mời Bạn Bè" từ embed hết lượt (customId: 'usageLimit_invite').
+ * Tạo / lấy lại invite cá nhân và hiển thị tiến độ 0/3 người.
+ */
+async function handleUsageLimitInviteButton(interaction, guild) {
+  await interaction.deferReply({ ephemeral: true });
+  const userId = interaction.user.id;
+
+  try {
+    const UsageLimit = require('../models/UsageLimit.js');
+
+    let doc           = await UserInvite.findOne({ guildId: guild.id, userId });
+    let discordInvite = null;
+
+    // Thử tìm lại invite cũ còn tồn tại trên Discord
+    if (doc?.inviteCode) {
+      try {
+        const all = await guild.invites.fetch();
+        discordInvite = all.get(doc.inviteCode) ?? null;
+      } catch (_) { discordInvite = null; }
+    }
+
+    // Tạo invite mới nếu chưa có hoặc đã bị xóa
+    if (!discordInvite) {
+      const channel = _findInviteChannel(guild);
+      if (!channel) {
+        return interaction.editReply({
+          embeds: [{ color: 0xe74c3c, description: '❌ Bot không có quyền tạo link mời.\nVui lòng liên hệ Admin để cấp quyền **Tạo liên kết mời**.' }],
+        });
+      }
+
+      discordInvite = await guild.invites.create(channel, {
+        maxAge: 0, maxUses: 0, unique: true,
+        reason: `Invite cá nhân (UsageLimit) cho ${interaction.user.tag}`,
+      });
+
+      doc = await UserInvite.findOneAndUpdate(
+        { guildId: guild.id, userId },
+        {
+          $set:          { inviteCode: discordInvite.code, inviteURL: `https://discord.gg/${discordInvite.code}` },
+          $setOnInsert:  { uses: 0, joinedCount: 0, activeCount: 0, rewardProgress: 0 },
+        },
+        { upsert: true, new: true },
+      );
+
+      if (_cache) {
+        const gMap = _cache.get(guild.id) ?? new Map();
+        gMap.set(discordInvite.code, discordInvite.uses ?? 0);
+        _cache.set(guild.id, gMap);
+      }
+      _log?.info(`[UsageLimit] Tạo invite ${discordInvite.code} cho user ${userId}`);
+    }
+
+    // Tiến độ đến mốc 3 người tiếp theo
+    const usageDoc       = await UsageLimit.findOne({ guildId: guild.id, userId });
+    const milestonesGiven = usageDoc?.inviteMilestonesAwarded ?? 0;
+    const activeCount    = Math.max(0, doc?.activeCount ?? 0);
+    const progress       = Math.max(0, Math.min(3, activeCount - milestonesGiven * 3));
+
+    const embed = {
+      color: 0x5865f2,
+      description: [
+        '### Link mời của bạn',
+        '',
+        `\`https://discord.gg/${discordInvite.code}\``,
+        '',
+        `Tiến độ: **${progress} / 3 người**`,
+        '',
+        '**Hãy mời 03 người bạn vào sever bằng link trên để nhận 300 lượt sử dụng miễn phí nhé**',
+      ].join('\n'),
+    };
+
+    return interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    _log?.error('[UsageLimit] Lỗi handleUsageLimitInviteButton:', err.message);
+    return interaction.editReply({
+      embeds: [{ color: 0xe74c3c, description: `❌ Lỗi khi tạo link mời: ${err.message}` }],
+    });
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -368,4 +493,5 @@ module.exports = {
   handleGuildMemberAdd,
   handleGuildMemberRemove,
   handleInviteButton,
+  handleUsageLimitInviteButton,
 };
