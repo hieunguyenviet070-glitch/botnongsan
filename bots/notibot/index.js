@@ -1752,6 +1752,22 @@ async function registerSlashCommands(guild) {
 }
 async function registerCommandsForTargetGuilds() {
   const processedGuilds = new Set();
+
+  // Ưu tiên đăng ký trực tiếp trên targetGuildId nếu bot đang ở trong server đó
+  if (config.targetGuildId) {
+    try {
+      const guild = botClient.guilds.cache.get(config.targetGuildId)
+        || await botClient.guilds.fetch(config.targetGuildId).catch(() => null);
+      if (guild) {
+        processedGuilds.add(guild.id);
+        await registerSlashCommands(guild);
+      }
+    } catch (err) {
+      log.warn(`Không thể đăng ký slash commands trên targetGuildId: ${err.message}`);
+    }
+  }
+
+  // Đăng ký thêm cho các guild khác chứa kênh đích (nếu có)
   for (const mapping of config.channelMappings) {
     if (mapping.targetChannelId) {
       try {
