@@ -1407,6 +1407,37 @@ async function handleCreatorReset(interaction, guild) {
     description: `Đã đặt lại số lượt join của **${result.modifiedCount}** Creator về **0**.\n_Link invite được giữ nguyên._` }] });
 }
 
+async function handleCreatorAddJoins(interaction, guild) {
+  if (!_isAdmin(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const targetUser = interaction.options.getUser('user');
+  const amount = interaction.options.getInteger('amount');
+  const guildId = guild.id;
+  const userId = targetUser.id;
+
+  const doc = await Creator.findOneAndUpdate(
+    { guildId, userId },
+    { $inc: { joinCount: amount } },
+    { new: true }
+  );
+  if (!doc) {
+    return interaction.editReply({ embeds: [{ color: 0xe67e22,
+      title: '⚠️ Không tìm thấy Creator',
+      description: `<@${userId}> không có trong danh sách Creator.` }] });
+  }
+
+  log.info(`[Creator] Admin ${interaction.user.tag} cộng +${amount} join cho ${targetUser.tag} → tổng: ${doc.joinCount}`);
+  return interaction.editReply({ embeds: [{ color: 0x2ecc71,
+    title: '✅ Đã cộng lượt join',
+    description: [
+      `👤 Creator: <@${userId}>`,
+      `➕ Cộng thêm: **+${amount}** join`,
+      `👥 Tổng join hiện tại: **${doc.joinCount}**`,
+    ].join('\n') }] });
+}
+
 async function handleCreatorRemove(interaction, guild) {
   if (!_isAdmin(interaction.user.id)) {
     return interaction.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
@@ -1675,6 +1706,14 @@ async function registerSlashCommands(guild) {
         name: 'creator-remove',
         description: 'Xóa một Creator và thu hồi link invite của họ (Admin)',
         options: [{ type: 6, name: 'user', description: 'Creator cần xóa', required: true }]
+      },
+      {
+        name: 'creator-add-joins',
+        description: 'Cộng thêm số lượt join cho một Creator (Admin)',
+        options: [
+          { type: 6, name: 'user',   description: 'Creator cần cộng join', required: true },
+          { type: 4, name: 'amount', description: 'Số join cần cộng thêm', required: true, min_value: 1 }
+        ]
       },
       {
         name: 'usage-add',
@@ -1970,6 +2009,8 @@ botClient.on('interactionCreate', async (interaction) => {
         await handleCreatorReset(interaction, guild);
       } else if (interaction.commandName === 'creator-remove') {
         await handleCreatorRemove(interaction, guild);
+      } else if (interaction.commandName === 'creator-add-joins') {
+        await handleCreatorAddJoins(interaction, guild);
       } else if (interaction.commandName === 'usage-add') {
         await handleUsageAdd(interaction, guild);
       } else if (interaction.commandName === 'usage-remove') {
